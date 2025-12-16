@@ -1,0 +1,168 @@
+100本ノック
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Thumb Baseball Professional</title>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+    canvas { display: block; }
+    #loading {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      color: white; font-size: 20px; text-align: center; text-shadow: 2px 2px 4px #000; pointer-events: none;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.sound.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="loading">カメラ起動中...<br>横画面でタップして開始</div>
+
+
+<script>
+let videoElement, hands, camera;
+let thumbTip, indexBase, wrist;
+let gameState = 1; // 1:赤線設定, 2:青線設定, 3:プレイ
+let angleClosed = 0, angleOpen = 0, currentAngle = 0;
+let balls = [];
+let score = 0, combo = 0;
+let bgImage, soundHit, soundHomerun, soundFoul;
+let message = "", messageTimer = 0, messageColor;
+
+
+function preload() {
+  bgImage = loadImage('stadium_bg.jpg'); 
+  soundHit = loadSound('hit.mp3');
+  soundHomerun = loadSound('homerun.mp3');
+  soundFoul = loadSound('foul.mp3');
+}
+
+
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  videoElement = createCapture(VIDEO);
+  videoElement.size(width, height);
+  videoElement.hide();
+
+
+  hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+  hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7});
+  hands.onResults(onResults);
+
+
+  camera = new Camera(videoElement.elt, {
+    onFrame: async () => { await hands.send({image: videoElement.elt}); },
+    width: 1280, height: 720
+  });
+  camera.start();
+}
+
+
+function onResults(results) {
+  document.getElementById('loading').style.display = 'none';
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const lm = results.multiHandLandmarks[0];
+    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
+    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
+    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
+  }
+}
+
+
+function touchStarted() {
+  if (getAudioContext().state !== 'running') getAudioContext().resume();
+  if (thumbTip) {
+    if (gameState === 1) { angleClosed = currentAngle; gameState = 2; }
+    else if (gameState === 2) { angleOpen = currentAngle; gameState = 3; }
+  }
+  return false;
+}
+
+
+function draw() {
+  if (gameState === 3) {
+    image(bgImage, 0, 0, width, height);
+    fill(0, 80); rect(0,0,width,height);
+    playGame();
+  } else {
+    drawCalibrationUI();
+  }
+}
+
+
+function drawCalibrationUI() {
+  push(); translate(width, 0); scale(-1, 1); image(videoElement, 0, 0, width, height); pop();
+  fill(0, 180); rect(0, 0, width, height);
+  textAlign(CENTER, CENTER); textSize(30); fill(255);
+  if (!thumbTip) { text("手を映してください", width/2, height/2); return; }
+  
+  if (gameState === 1) {
+    stroke(255, 0, 0); strokeWeight(5); line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+    noStroke(); text("【STEP 1】\n親指を閉じて(赤線)タップ", width/2, height/2);
+  } else {
+    stroke(0, 150, 255); strokeWeight(5); line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+    noStroke(); text("【STEP 2】\n親指を全開にして(青線)タップ", width/2, height/2);
+  }
+}
+
+
+function playGame() {
+  let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
+  let batX = map(progress, 0, 1, width/2 - 150, width/2 + 150);
+  let batY = map(progress, 0, 1, height - 100, height - 250);
+
+
+  // バット描画
+  push();
+  translate(batX, batY);
+  rotate(map(progress, 0, 1, -PI/6, PI/6));
+  fill(progress > 0.8 ? color(255,0,0) : (progress > 0.1 ? color(255,255,0) : 255));
+  rect(-10, 0, 20, 120);
+  pop();
+
+
+  if (frameCount % 60 === 0) balls.push(new Ball());
+
+
+  for (let i = balls.length - 1; i >= 0; i--) {
+    let b = balls[i];
+    b.update(); b.display();
+    if (!b.isHit && dist(b.x, b.y, batX, batY) < 60) {
+      let pct = progress * 100;
+      if (pct <= 10) { b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; }
+      else if (pct <= 80) { b.hit("hit"); score++; combo++; if(score%10===0) showMessage("イイじゃん👍", color(255,255,0)); }
+      else { b.hit("homerun"); score+=5; combo++; showMessage(combo>=50?"最高にイイじゃん👍":"ホームラン！", color(255,50,50)); }
+    }
+    if (b.y < -100 || b.y > height + 100) balls.splice(i, 1);
+  }
+  
+  fill(255); textSize(32); textAlign(LEFT, TOP);
+  text(`Score: ${score}\nCombo: ${combo}`, 20, 20);
+  if (messageTimer > 0) {
+    textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
+    textSize(60); text(message, width/2, height/3); messageTimer--;
+  }
+}
+
+
+function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
+
+
+class Ball {
+  constructor() { this.x = random(100, width-100); this.y = -50; this.vx = random(-2,2); this.vy = random(5,8); this.isHit = false; }
+  update() { this.x += this.vx; this.y += this.vy; if (this.isHit) this.vy += 0.8; }
+  display() { fill(255); ellipse(this.x, this.y, 40); }
+  hit(type) {
+    this.isHit = true;
+    if (type === "foul") { soundFoul.play(); this.vy = 2; }
+    else if (type === "hit") { soundHit.play(); this.vy = -15; this.vx *= 2; }
+    else { soundHomerun.play(); this.vy = -35; this.vx *= 0.5; }
+  }
+}
+</script>
+</body>
+</html>
