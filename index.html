@@ -49,7 +49,7 @@ function setup() {
 
 
   hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-  hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.7, minTrackingConfidence: 0.7});
+  hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
   hands.onResults(onResults);
 
 
@@ -167,6 +167,7 @@ function mousePressed(){console.log("tap ok");}
 </script> 
 </body>
 </html>
+
 
 
 
