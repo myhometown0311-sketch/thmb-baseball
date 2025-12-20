@@ -7,9 +7,9 @@
   <title>Thumb Baseball Professional</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
-    canvas { display: block; }
+    canvas { display: block;/*画面の左上に固定*/
     #loading {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; transform: translate(-50%, -50%);
       color: white; font-size: 20px; text-align: center; text-shadow: 2px 2px 4px #000; pointer-events: none;
     }
   </style>
@@ -26,7 +26,7 @@
 let videoElement, hands, camera;
 let thumbTip, indexBase, wrist;
 let gameState = 1; // 1:赤線設定, 2:青線設定, 3:プレイ
-let angleClosed = 0, angleOpen = 0, currentAngle = 0;
+let angleClosed = 0, angleOpen = 0, currentAngle = 0; let targetX = 0; 
 let balls = [];
 let score = 0, combo = 0;
 let bgImage, soundHit, soundHomerun, soundFoul;
@@ -63,11 +63,10 @@ function setup() {
 
 function onResults(results) {
   document.getElementById('loading').style.display = 'none';
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+  if (if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const lm = results.multiHandLandmarks[0];
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
-    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
-    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    targetX = thumbTip.x; 
     currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
   }
 }
@@ -94,7 +93,25 @@ function draw() {
 }
 
 
-function drawCalibrationUI() {
+function drawCalibrationUI(function drawCalibrationUI() {
+    // 背景を薄く表示してカメラを見やすくする
+    push();
+    translate(width, 0);
+    scale(-1, 1);
+    image(videoElement, 0, 0, width, height);
+    pop();
+
+    // ★追加：手の配置ガイド（画面中央に円か四角を表示）
+    noFill();
+    stroke(255, 255, 0, 150); // 黄色のガイド線
+    strokeWeight(3);
+    ellipse(width / 2, height / 2, 300, 400); // 楕円のガイド
+    fill(255, 255, 0);
+    noStroke();
+    textSize(20);
+    text("この枠内に手をかざしてください", width / 2, height / 2 - 220);
+
+    // ...以下の既存コード（fill(0, 180)など）はそのまま) {
   push(); translate(width, 0); scale(-1, 1); image(videoElement, 0, 0, width, height); pop();
   fill(0, 180); rect(0, 0, width, height);
   textAlign(CENTER, CENTER); textSize(30); fill(255);
@@ -136,8 +153,12 @@ function playGame() {
       if (pct <= 10) { b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; }
       else if (pct <= 80) { b.hit("hit"); score++; combo++; if(score%10===0) showMessage("イイじゃん👍", color(255,255,0)); }
       else { b.hit("homerun"); score+=5; combo++; showMessage(combo>=50?"最高にイイじゃん👍":"ホームラン！", color(255,50,50)); }
-    }
-    if (b.y < -100 || b.y > height + 100) balls.splice(i, 1);
+    }class Ball {
+    constructor() {
+        // 画面全体ではなく、親指がいる周辺（左右100px以内）から落とす
+        this.x = random(targetX - 100, targetX + 100); 
+        this.y = -50;
+        // ...略    if (b.y < -100 || b.y > height + 100) balls.splice(i, 1);
   }
   
   fill(255); textSize(32); textAlign(LEFT, TOP);
@@ -167,6 +188,7 @@ function mousePressed(){console.log("tap ok");}
 </script> 
 </body>
 </html>
+
 
 
 
