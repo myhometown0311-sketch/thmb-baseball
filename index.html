@@ -34,10 +34,10 @@ let message = "", messageTimer = 0, messageColor;
 
 
 function preload() {
-  bgImage = loadImage('stadium_bg.png'); 
-  soundHit = loadSound('hit.mp3');
-  soundHomerun = loadSound('homerun.mp3');
-  soundFoul = loadSound('foul.mp3');
+  //bgImage = loadImage('stadium_bg.png'); 
+  //soundHit = loadSound('hit.mp3');
+  //soundHomerun = loadSound('homerun.mp3');
+  //soundFoul = loadSound('foul.mp3');
 }
 
 
@@ -85,7 +85,7 @@ function touchStarted() {
 
 function draw() {
   if (gameState === 3) {
-    image(bgImage, 0, 0, width, height);
+    //image(bgImage, 0, 0, width, height);
     fill(0, 80); rect(0,0,width,height);
     playGame();
   } else {
@@ -158,14 +158,15 @@ class Ball {
   display() { fill(255); ellipse(this.x, this.y, 40); }
   hit(type) {
     this.isHit = true;
-    if (type === "foul") { soundFoul.play(); this.vy = 2; }
-    else if (type === "hit") { soundHit.play(); this.vy = -15; this.vx *= 2; }
-    else { soundHomerun.play(); this.vy = -35; this.vx *= 0.5; }
+    //if (type === "foul") { soundFoul.play(); this.vy = 2; }
+    //else if (type === "hit") { soundHit.play(); this.vy = -15; this.vx *= 2; }
+    //else { soundHomerun.play(); this.vy = -35; this.vx *= 0.5; }
   }
 }
 function mousePressed(){console.log("tap ok");}
 </script> 
 </body>
 </html>
+
 
 
