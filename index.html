@@ -68,14 +68,15 @@ function onResults(results) {currentAngle = p5.Vector.sub(indexBase, wrist).angl
     targetX = thumbTip.x; // ★これを追加して親指の位置を記録する
   }
   document.getElementById('loading').style.display = 'none';
-  (if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const lm = results.multiHandLandmarks[0];
-    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
-    targetX = thumbTip.x; 
-    currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
-  }
-}
 
+if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+  const lm = results.multiHandLandmarks[0];
+  thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
+  targetX = thumbTip.x;
+  currentAngle = p5.Vector
+    .sub(indexBase, wrist)
+    .angleBetween(p5.Vector.sub(thumbTip, wrist));
+}
 
 function touchStarted() {
   if (getAudioContext().state !== 'running') getAudioContext().resume();
@@ -179,6 +180,7 @@ function mousePressed(){console.log("tap ok");}
 </script> 
 </body>
 </html>
+
 
 
 
