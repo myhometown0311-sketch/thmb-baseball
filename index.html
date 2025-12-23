@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Struck Out Fixed</title>
+  <title>Thumb Baseball - Layout Change</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -68,7 +68,6 @@ function setup() {
   guidePositionX = width * 0.85;
   guidePositionY = height / 2 + 100;
 
-  // 初期化
   initPanels();
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
@@ -86,12 +85,12 @@ function initPanels() {
   panels = [];
   let cols = 3; 
   let rows = 3;
-  // パネルサイズと位置の調整
   let panelW = width * 0.08;
   let panelH = height * 0.12;
-  // 画面中央上部に配置
-  let startX = width / 2 - (panelW * 3 + 20) / 2; 
-  let startY = height * 0.1; 
+  
+  // １．パネル位置を画面左上に変更
+  let startX = width * 0.05; // 左端から5%の位置
+  let startY = height * 0.05; // 上端から5%の位置
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -155,7 +154,6 @@ function resetGame() {
 }
 
 function draw() {
-  // 1. 背景画像
   if (bgLoaded && bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
@@ -167,19 +165,14 @@ function draw() {
     background(0);
   }
 
-  // 2. カメラ映像（薄く）
   push();
   translate(width, 0); scale(-1, 1); tint(255, 120);
   image(videoElement, 0, 0, width, height);
   pop();
 
-  // 3. ストラックアウトパネル（★カメラより手前に描画変更！）
   drawPanels();
-
-  // 4. ガイド枠
   drawAlwaysGuide();
 
-  // 5. ゲームループ
   if (gameState === 3) {
     checkHandStability();
     if (gameState === 3) playGame();
@@ -193,20 +186,17 @@ function draw() {
 function drawPanels() {
   if (panels.every(p => !p.active)) {
     showMessage("PERFECT! Reset!", color(0, 255, 255));
-    if (frameCount % 60 === 0) initPanels(); // 少し待ってから復活
+    if (frameCount % 60 === 0) initPanels(); 
   }
 
   for (let p of panels) {
     if (p.active) {
-      // 枠線と数字をはっきり表示
-      fill(0, 255, 0, 150); // 緑色の半透明
+      fill(0, 255, 0, 150); 
       stroke(255); strokeWeight(3);
       rect(p.x, p.y, p.w, p.h, 5);
-      
       fill(255); noStroke(); textSize(40); textStyle(BOLD); textAlign(CENTER, CENTER);
       text(p.num, p.x + p.w/2, p.y + p.h/2);
     } else {
-      // 抜いた跡
       fill(50, 50); stroke(100); strokeWeight(1);
       rect(p.x, p.y, p.w, p.h, 5);
     }
@@ -286,7 +276,8 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 100) {
+    // ４．感度アップ：当たり判定を100px -> 180pxに拡大
+    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 180) {
       playHitSound();
       let pct = progress * 100;
       let hitOffset = dist(b.x, b.y, batX, batY); 
@@ -328,13 +319,17 @@ function playHitSound() {
 }
 
 function drawGameUI(progress) {
+  // ２．スコアを右上に配置
   fill(255); stroke(0); strokeWeight(4);
-  textSize(32); textAlign(LEFT, TOP);
-  text(`打点: ${score}`, 20, 20);
-  text(`Lv.${level}`, 20, 60);
+  textAlign(RIGHT, TOP);
+  textSize(32); 
+  text(`打点: ${score}`, width - 20, 20);
+  text(`Lv.${level}`, width - 20, 60);
 
-  let uiW = 200; let uiX = width - uiW - 20; let uiY = 20;
+  // ゲージ位置も調整（スコアの下へ）
+  let uiW = 200; let uiX = width - uiW - 20; let uiY = 100;
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
+  
   let deg = degrees(currentAngle);
   fill(255); textAlign(RIGHT, TOP); textSize(24);
   text(`角度: ${deg.toFixed(1)}°`, width - 30, uiY + 10);
@@ -354,8 +349,9 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
+    // ３．投げる位置を「左下」に変更
     this.startX = 0; 
-    this.startY = height * 0.4;
+    this.startY = height * 0.85; // 画面下の方
     this.x = this.startX;
     this.y = this.startY;
 
@@ -396,30 +392,41 @@ class Ball {
 
     let targetPanelX;
     
-    // 左右打ち分け
+    // パネルは左上にあるため、ターゲット座標を修正
+    // 0.2(右流し) ... 0.5(センター) ... 0.8(左引っ張り)
+    // 左上のパネルエリア：X座標は width * 0.05 〜 width * 0.3 くらい
+    let panelAreaStart = width * 0.05;
+    let panelW = width * 0.08;
+
     if (pct > 0.7) { 
-      targetPanelX = width * 0.35; // 左方向(1,4,7)
+      // 早打ち（左） -> 左列(1,4,7)
+      targetPanelX = panelAreaStart + panelW * 0.5;
     } else if (pct < 0.4) {
-      targetPanelX = width * 0.65; // 右方向(3,6,9)
+      // 遅打ち（右） -> 右列(3,6,9)
+      targetPanelX = panelAreaStart + panelW * 2.5;
     } else {
-      targetPanelX = width * 0.5;  // 中央(2,5,8)
+      // センター -> 中列(2,5,8)
+      targetPanelX = panelAreaStart + panelW * 1.5;
     }
 
     // 上下打ち分け
+    let panelAreaTop = height * 0.05;
+    let panelH = height * 0.12;
     let targetPanelY;
-    if (offset < 30) {
-      targetPanelY = height * 0.15; // 上段
-    } else if (offset < 60) {
-      targetPanelY = height * 0.25; // 中段
+    
+    if (offset < 60) { // 芯に近い -> 上段(1,2,3)
+      targetPanelY = panelAreaTop + panelH * 0.5;
+    } else if (offset < 120) {
+      targetPanelY = panelAreaTop + panelH * 1.5;
     } else {
-      targetPanelY = height * 0.35; // 下段
+      targetPanelY = panelAreaTop + panelH * 2.5;
     }
 
     let dx = targetPanelX - this.x;
     let dy = targetPanelY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
     
-    let flySpeed = 30;
+    let flySpeed = 35; // 打球速度アップ
     this.vx = (dx / distLen) * flySpeed;
     this.vy = (dy / distLen) * flySpeed;
   }
