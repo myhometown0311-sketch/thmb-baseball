@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Final UI</title>
+  <title>Thumb Baseball - Life System</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -34,7 +34,8 @@ let videoElement, hands, camera;
 let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
 
-let gameState = 1; // 1:Step1, 2:Step2, 3:Play, 4:Error
+// 5: Game Over状態を追加
+let gameState = 1; // 1:Step1, 2:Step2, 3:Play, 4:Error, 5:GameOver
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
 let currentProgressPercent = 0; 
 let fixedWristPosition = null; 
@@ -44,13 +45,17 @@ let balls = [];
 let panels = []; 
 let score = 0;
 let level = 1; 
+
+// ５．ライフポイント制
+let maxLives = 3;
+let lives = maxLives;
+
 let message = "", messageTimer = 0, messageColor;
 let bgImage, bgLoaded = false;
 let hitSoundOsc, hitSoundEnv; 
 
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
-
 let panelStartX, panelStartY;
 
 function preload() {
@@ -112,11 +117,14 @@ function initPanels() {
   let rows = 3;
   
   let shrinkRate = constrain(1.0 - (level - 1) * 0.1, 0.5, 1.0);
-  let basePanelW = width * 0.08;
-  let basePanelH = height * 0.12;
+  
+  // ２．パネルの大きさを小さくする（以前の0.08から0.06へ縮小）
+  let basePanelW = width * 0.06;
+  let basePanelH = height * 0.10;
+  
   let panelW = basePanelW * shrinkRate;
   let panelH = basePanelH * shrinkRate;
-  let panelGap = 10 + (1 - shrinkRate) * 20;
+  let panelGap = 15 + (1 - shrinkRate) * 20;
 
   panelStartX = width * 0.02; 
   let totalH = rows * panelH + (rows - 1) * panelGap;
@@ -162,7 +170,8 @@ function handleInput() {
   if (getAudioContext().state !== 'running') getAudioContext().resume();
   hitSoundOsc.start(); 
 
-  if (gameState === 4) { resetGame(); return; }
+  // ゲームオーバー時にタップでリセット
+  if (gameState === 5 || gameState === 4) { resetGame(); return; }
 
   if (handDetected && thumbTip && wrist) {
     if (gameState === 1) { 
@@ -181,6 +190,7 @@ function resetGame() {
   balls = [];
   score = 0;
   level = 1;
+  lives = maxLives; // ライフ回復
   fixedWristPosition = null;
   initPanels();
 }
@@ -210,6 +220,8 @@ function draw() {
     if (gameState === 3) playGame();
   } else if (gameState === 4) {
     drawErrorScreen();
+  } else if (gameState === 5) {
+    drawGameOverScreen(); // ゲームオーバー画面
   } else {
     drawSetupUI();
   }
@@ -258,14 +270,12 @@ function checkHandStability() {
   }
 }
 
-// １．起動画面の指示テキストを変更
 function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 250;
 
   if (!handDetected) { 
-      // ２．横画面指示と具体的な手の指示
       text("【重要】スマホは横画面にしてください\n\n手をグーにして\n掌(てのひら)側をカメラに向けてください", width/2, height/2); 
       return; 
   }
@@ -282,180 +292,17 @@ function drawErrorScreen() {
   text("手首の位置を固定してください。\n画面タップでリセット", width/2, height/2 + 50);
 }
 
-function playGame() {
-  let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
-  currentProgressPercent = Math.round(progress * 100);
-
-  let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
-  let batY = map(progress, 0, 1, height - 100, height - 250);
-  let isBatActive = (progress >= 0.1); 
-  let batBaseLen = 140;
-  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
-
-  push();
-  translate(batX, batY);
-  rotate(map(progress, 0, 1, PI/4, -PI/4));
+// ５．ゲームオーバー画面
+function drawGameOverScreen() {
+  fill(0, 200); rect(0, 0, width, height);
+  textAlign(CENTER, CENTER); 
   
-  if (isBatActive) {
-    fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
-    stroke(0);
-  } else {
-    fill(100, 150);
-    noStroke();
-  }
-  rect(-15, 0, 30, batLen, 10);
-  pop();
-
-  if (balls.length === 0 && frameCount % 60 === 0) {
-    balls.push(new Ball(level));
-  }
-
-  for (let i = balls.length - 1; i >= 0; i--) {
-    let b = balls[i];
-    b.update(); b.display();
-    
-    let hitThreshold = max(250 - (level - 1) * 20, 80);
-
-    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < hitThreshold) {
-      playHitSound();
-      let pct = progress * 100;
-      let hitOffset = dist(b.x, b.y, batX, batY); 
-      b.hit(progress, hitOffset); 
-    }
-
-    if (b.isHit) {
-      for (let p of panels) {
-        if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
-          p.active = false; 
-          score++; 
-          checkLevelUp();
-          showMessage(`No.${p.num} HIT!`, color(255, 255, 0));
-          balls.splice(i, 1);
-          break;
-        }
-      }
-    }
-
-    if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) balls.splice(i, 1);
-  }
-
-  drawGameUI(progress);
-}
-
-function checkLevelUp() {
-  if (score > 0 && score % 10 === 0) {
-    level++;
-    showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0));
-  }
-}
-
-function playHitSound() {
-  hitSoundOsc.freq(800);
-  hitSoundEnv.play();
-  setTimeout(() => {
-    hitSoundOsc.freq(1200); 
-  }, 30);
-}
-
-function drawGameUI(progress) {
-  fill(255); stroke(0); strokeWeight(4);
-  textAlign(RIGHT, TOP);
-  textSize(32); 
-  text(`打点: ${score}`, width - 20, 20);
-  text(`Lv.${level}`, width - 20, 60);
-
-  // ３．バットの可動範囲ゲージとして表記
-  let uiW = 220; let uiX = width - uiW - 20; let uiY = 100;
+  fill(255, 50, 50); stroke(255); strokeWeight(5); textSize(60);
+  text("GAME OVER", width/2, height/2 - 50);
   
-  // 背景
-  fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
+  fill(255); noStroke(); textSize(30);
+  text(`Total Score: ${score}`, width/2, height/2 + 30);
   
-  // ラベル "可動域ゲージ"
-  fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
-  text("可動域ゲージ", uiX + uiW/2, uiY + 5);
-  
-  // 閉・開のラベル
-  textAlign(LEFT, TOP); textSize(12); text("閉", uiX + 10, uiY + 25);
-  textAlign(RIGHT, TOP); text("開", uiX + uiW - 10, uiY + 25);
-
-  // ゲージ本体
-  let barX = uiX + 10; let barY = uiY + 45; let barW = 200;
-  stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 20);
-  noStroke(); fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
-  rect(barX, barY, map(progress, 0, 1, 0, barW), 20);
-
-  if (messageTimer > 0) {
-    textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
-    textSize(60); text(message, width/2, height/3); messageTimer--;
-  }
+  textSize(24);
+  text("画面タップでリトライ", width/2, height/2 + 100);
 }
-
-function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
-
-class Ball {
-  constructor(currentLevel) {
-    this.startX = 0; 
-    this.startY = height * 0.85; 
-    this.x = this.startX;
-    this.y = this.startY;
-
-    let targetProgress = random(0.0, 1.0); 
-    let targetX = map(targetProgress, 0, 1, batRangeStart, batRangeEnd);
-    let targetY = height * 0.75;
-
-    let dirX = targetX - this.startX;
-    let dirY = targetY - this.startY;
-    let len = sqrt(dirX*dirX + dirY*dirY);
-    
-    let baseSpeed = 15 + (currentLevel - 1) * 2; 
-    let speed = random(baseSpeed, baseSpeed + 3); 
-    
-    this.vx = (dirX / len) * speed;
-    this.vy = (dirY / len) * speed;
-
-    this.isHit = false;
-    this.ballColor = color(255);
-  }
-
-  update() {
-    this.x += this.vx;
-    this.y += this.vy;
-    if (this.isHit) { 
-      this.vy += 0.2; 
-    }
-  }
-
-  display() {
-    fill(this.ballColor); stroke(0); strokeWeight(1);
-    ellipse(this.x, this.y, 30);
-  }
-
-  hit(progress, offset) {
-    this.isHit = true;
-    this.ballColor = color(255, 255, 0);
-
-    let areaW = 3 * panels[0].w + 20; 
-    let areaLeft = panelStartX;
-    let areaRight = panelStartX + areaW;
-
-    let targetX = map(progress, 0.2, 0.9, areaRight, areaLeft);
-
-    let areaTop = panels[0].y;
-    let areaBottom = panels[8].y + panels[8].h;
-    
-    let sweetSpotLimit = max(100 - (level-1)*10, 30);
-    
-    let targetY = map(offset, 0, sweetSpotLimit * 2, areaTop, areaBottom);
-
-    let dx = targetX - this.x;
-    let dy = targetY - this.y;
-    let distLen = sqrt(dx*dx + dy*dy);
-    
-    let flySpeed = 40; 
-    this.vx = (dx / distLen) * flySpeed;
-    this.vy = (dy / distLen) * flySpeed;
-  }
-}
-</script>
-</body>
-</html>
