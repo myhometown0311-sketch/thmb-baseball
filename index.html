@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Mobile Fix Final</title>
+  <title>Thumb Baseball - Force Start</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
     
-    /* オーバーレイ（スタート画面＆ロード画面） */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.9);
@@ -16,18 +15,17 @@
       z-index: 20; color: white; text-align: center;
     }
     
-    /* スタートボタン */
     #startBtn {
       margin-top: 20px; padding: 20px 60px; font-size: 24px; font-weight: bold;
       color: black; background: #ffff00; border: 4px solid #fff; border-radius: 50px; cursor: pointer;
       box-shadow: 0 0 15px rgba(255, 255, 0, 0.5);
+      -webkit-tap-highlight-color: transparent; /* スマホでのタップ強調を消す */
     }
     
-    /* ログ表示エリア */
     #statusLog {
       margin-top: 30px; font-size: 14px; color: #00ff00; 
       background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px;
-      max-width: 80%;
+      max-width: 90%; word-wrap: break-word;
     }
   </style>
   
@@ -42,9 +40,9 @@
     <h1 style="color:white; margin-bottom:10px;">Thumb Baseball</h1>
     <p style="color:#ddd; font-size:14px;">スマホを「横画面」にして<br>ボタンを押してください</p>
     
-    <button id="startBtn" onclick="startGame()">ゲームスタート</button>
+    <button id="startBtn">ゲームスタート</button>
     
-    <div id="statusLog">待機中...</div>
+    <div id="statusLog">準備完了。ボタンをタップしてください。</div>
   </div>
 
 <script>
@@ -68,58 +66,59 @@ let maxLives = 3;
 let lives = maxLives;
 
 let message = "", messageTimer = 0, messageColor;
-let bgImage = null; // 画像はnullで初期化
+let bgImage = null; 
 let hitSoundOsc, hitSoundEnv; 
-let audioStarted = false;
 
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
 
-// ログ表示用関数（画面に出す）
 function log(msg) {
   const el = document.getElementById('statusLog');
   if(el) el.innerText = msg;
   console.log(msg);
 }
 
-// ★修正点: preloadを使わず、setup内で非同期に読み込む
 function setup() {
-  // スマホ対策: ピクセル密度を1に固定して軽くする
   pixelDensity(1); 
-  
   createCanvas(windowWidth, windowHeight);
   
-  // 背景画像の読み込み（失敗しても止まらないようにする）
+  // ボタンにイベントリスナーを設定（onclick属性より確実）
+  const btn = document.getElementById('startBtn');
+  btn.addEventListener('click', startGame);
+  btn.addEventListener('touchstart', startGame); // スマホ用タッチイベント
+
+  // 画像読み込み（非同期）
   loadImage('stadium_bg.png', 
-    (img) => { bgImage = img; log("背景画像読み込み完了"); },
-    () => { log("背景画像なし（黒背景で動作します）"); }
+    (img) => { bgImage = img; },
+    () => { console.log("背景画像なし"); }
   );
 
   updateLayout();
   initPanels();
-  
-  log("準備完了。スタートボタンを押してください。");
 }
 
-// --- スタートボタンが押されたら実行 ---
-function startGame() {
+// --- スタート処理 ---
+function startGame(e) {
+  // イベントの重複発火防止
+  if(e) e.preventDefault();
   const btn = document.getElementById('startBtn');
-  btn.style.display = 'none'; // ボタンを隠す
-  log("システム起動中...");
+  if(btn.style.display === 'none') return;
+  
+  btn.style.display = 'none';
+  log("起動処理を開始します...");
 
-  // 1. オーディオコンテキストの開始（iOS対策）
-  userStartAudio().then(() => {
-    audioStarted = true;
-    initAudio(); // 音声準備
-    log("音声OK。カメラを起動します...");
-    
-    // 2. カメラとAIの起動
-    initCameraAndHands();
-  }).catch(e => {
-    log("音声エラー(無視して続行): " + e);
-    initCameraAndHands();
-  });
+  // 1. オーディオ初期化（エラーが出ても無視して進む）
+  try {
+    userStartAudio();
+    initAudio();
+    log("音声初期化試行...");
+  } catch(err) {
+    log("音声エラー(無視): " + err);
+  }
+
+  // 2. カメラとAIを即座に起動（音声を待たない）
+  setTimeout(initCameraAndHands, 100); 
 }
 
 function initAudio() {
@@ -133,41 +132,46 @@ function initAudio() {
 }
 
 function initCameraAndHands() {
-  // ★重要: スマホ用カメラ設定
+  log("カメラへのアクセスを要求中...");
+  
   let constraints = {
-    audio: false,
+    audio: false, // 音声取得はオフにする（許可ブロック防止）
     video: {
-      facingMode: "user", // 自撮りカメラ
-      width: { ideal: 640 }, // 解像度を下げて軽くする
+      facingMode: "user",
+      width: { ideal: 640 },
       height: { ideal: 480 }
     }
   };
 
   videoElement = createCapture(constraints, function(stream) {
-    log("カメラ取得成功。AIを読み込んでいます...");
+    log("カメラ接続成功！AIを読み込みます...");
   });
   
+  if(!videoElement) {
+    log("カメラが見つかりません。権限を確認してください。");
+    return;
+  }
+
   videoElement.size(width, height);
   videoElement.hide();
   
-  // iOSでビデオが止まらないようにする属性設定
+  // iOS/Androidでの再生対策
   videoElement.elt.setAttribute('playsinline', '');
   videoElement.elt.setAttribute('autoplay', '');
   videoElement.elt.setAttribute('muted', '');
 
-  // MediaPipe Handsの設定
+  // MediaPipe Hands
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
   
   hands.setOptions({
     maxNumHands: 1, 
-    modelComplexity: 0, // ★軽量モード(0)に設定
+    modelComplexity: 0, // 0=Lite (最軽量)
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5
   });
   
   hands.onResults(onResults);
 
-  // カメラループ開始
   camera = new Camera(videoElement.elt, {
     onFrame: async () => { await hands.send({image: videoElement.elt}); },
     width: 640, height: 480
@@ -175,11 +179,11 @@ function initCameraAndHands() {
   
   camera.start()
     .then(() => { 
-      log("カメラ映像解析中...手を映してください"); 
-      isGameStarted = true; // 描画ループ開始許可
+      log("システム稼働中。手を映してください。"); 
+      isGameStarted = true; 
     })
     .catch(err => { 
-      log("カメラエラー: " + err + "\nブラウザの設定を確認してください"); 
+      log("起動エラー: " + err); 
     });
 }
 
@@ -237,7 +241,8 @@ function onResults(results) {
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const overlay = document.getElementById('overlay');
     if (overlay.style.display !== 'none') {
-      overlay.style.display = 'none'; // ゲーム画面へ
+      overlay.style.display = 'none'; 
+      log("ゲーム開始！");
     }
     
     handDetected = true;
@@ -253,7 +258,6 @@ function onResults(results) {
   }
 }
 
-// --- 入力処理 ---
 function touchStarted() { handleInput(); return false; }
 function mousePressed() { handleInput(); }
 
@@ -283,9 +287,8 @@ function resetGame() {
   initPanels();
 }
 
-// --- 描画ループ ---
 function draw() {
-  background(0); // 常に画面クリア
+  background(0); 
 
   if (bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
@@ -296,10 +299,8 @@ function draw() {
     image(bgImage, dx, dy, dw, dh);
   }
 
-  // ゲーム開始前は何もしない（スタート画面が表示されている）
   if (!isGameStarted) return;
 
-  // カメラ映像の描画
   if (videoElement) {
     push();
     translate(width, 0); scale(-1, 1); tint(255, 120);
@@ -365,7 +366,6 @@ function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 250;
-  // 手が見つかってない時は、HTML側のオーバーレイが表示されているのでここでは何も描かない
   if (!handDetected) return;
 
   if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
@@ -397,7 +397,7 @@ function playGame() {
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
-  // スマホ感度対策：30%以上開いたらスイング
+  // スマホ感度対策
   let isBatActive = (progress >= 0.3); 
   
   let batBaseLen = 140;
