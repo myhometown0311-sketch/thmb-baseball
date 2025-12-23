@@ -3,12 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Safe Start</title>
+  <title>Thumb Baseball - Mobile Fix</title>
   <style>
-    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
+    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
     
-    /* スタート画面のスタイル */
+    /* スタート画面 */
     #startScreen {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.9);
@@ -16,10 +16,13 @@
       z-index: 20; color: white; text-align: center;
     }
     #startBtn {
-      margin-top: 20px; padding: 15px 40px; font-size: 24px; font-weight: bold;
+      margin-top: 20px; padding: 20px 50px; font-size: 24px; font-weight: bold;
       color: black; background: #ffff00; border: none; border-radius: 10px; cursor: pointer;
     }
-    #loadingText { display: none; margin-top: 20px; font-size: 18px; color: #00ff00; }
+    /* デバッグ用ステータス表示 */
+    #statusLog {
+      margin-top: 20px; font-size: 16px; color: #00ff00; background: rgba(0,0,0,0.5); padding: 10px;
+    }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.sound.min.js"></script>
@@ -29,18 +32,17 @@
 <body>
 
   <div id="startScreen">
-    <h1>Thumb Baseball</h1>
-    <p>【重要】スマホは横画面にしてください</p>
-    <p>カメラの許可を求めたら「許可」を押してください</p>
+    <h1 style="color:white;">Thumb Baseball</h1>
+    <p style="color:#ddd;">スマホは「横画面」にしてください</p>
     <button id="startBtn" onclick="startGame()">ゲームスタート</button>
-    <div id="loadingText">システム起動中...<br>手を映してください</div>
+    <div id="statusLog">待機中...</div>
   </div>
 
 <script>
 let videoElement, hands, camera;
 let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
-let isGameStarted = false; // スタートボタン管理
+let isGameStarted = false;
 
 let gameState = 1; 
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
@@ -64,34 +66,47 @@ let batRangeStart, batRangeEnd;
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
 
+// ログ表示用関数
+function log(msg) {
+  const el = document.getElementById('statusLog');
+  if(el) el.innerText = msg;
+  console.log(msg);
+}
+
 function preload() {
   bgImage = loadImage('stadium_bg.png', 
-    () => { bgLoaded = true; },
-    () => { bgLoaded = false; console.log("画像なし"); }
+    () => { bgLoaded = true; log("画像読み込み完了"); },
+    () => { bgLoaded = false; log("画像読み込み失敗(黒背景)"); }
   );
 }
 
-// --- スタートボタンが押されたら実行される ---
+// --- スタートボタン処理 ---
 function startGame() {
   document.getElementById('startBtn').style.display = 'none';
-  document.getElementById('loadingText').style.display = 'block';
-  
-  // オーディオコンテキストの開始（ユーザー操作が必要）
+  log("システム起動中...");
+
+  // 1. オーディオ開始
   userStartAudio().then(() => {
     audioStarted = true;
+    log("音声システムOK");
     
-    // カメラとMediaPipeの開始
-    initCameraAndHands();
-    
-    // 音声オシレーターの準備
+    // 2. 音声エンジンの初期化
     initAudio();
+
+    // 3. カメラとAIの初期化
+    initCameraAndHands();
+  }).catch(e => {
+    log("音声エラー: " + e);
+    // 音声ダメでもゲームは進める
+    initCameraAndHands();
   });
 }
 
 function setup() {
+  // スマホで重くならない設定
   pixelDensity(1); 
+  
   createCanvas(windowWidth, windowHeight);
-  // 初期レイアウト計算
   updateLayout();
   initPanels();
 }
@@ -103,30 +118,55 @@ function initAudio() {
   hitSoundOsc = new p5.Oscillator('triangle'); 
   hitSoundOsc.amp(hitSoundEnv);
   hitSoundOsc.freq(800);
-  hitSoundOsc.start(); // 音を鳴らす準備（音量はエンベロープで制御）
+  hitSoundOsc.start(); 
 }
 
 function initCameraAndHands() {
-  videoElement = createCapture(VIDEO);
-  videoElement.size(1280, 720); // 解像度指定
+  log("カメラへのアクセスを求めています...");
+  
+  // ★重要: スマホ用の明示的なカメラ設定
+  let constraints = {
+    audio: false,
+    video: {
+      facingMode: "user", // フロントカメラ
+      width: { ideal: 640 }, // 解像度を落として軽くする
+      height: { ideal: 480 }
+    }
+  };
+
+  videoElement = createCapture(constraints, function(stream) {
+    log("カメラ取得成功。AI読み込み中...");
+  });
+  
+  videoElement.size(width, height);
+  
+  // ★重要: iOS/Androidでビデオを自動再生させるおまじない
+  videoElement.elt.setAttribute('playsinline', '');
+  videoElement.elt.setAttribute('autoplay', '');
+  videoElement.elt.setAttribute('muted', '');
+  
   videoElement.hide();
 
+  // MediaPipe Handsの設定
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
+  
   hands.setOptions({
     maxNumHands: 1, 
-    modelComplexity: 0, // ★軽量化: 0に設定（スマホ対策）
+    modelComplexity: 0, // 0=Lite (最軽量)
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5
   });
+  
   hands.onResults(onResults);
 
+  // カメラループ開始
   camera = new Camera(videoElement.elt, {
     onFrame: async () => { await hands.send({image: videoElement.elt}); },
-    width: 1280, height: 720
+    width: 640, height: 480
   });
-  camera.start();
-  
-  isGameStarted = true;
+  camera.start()
+    .then(() => { log("カメラループ開始"); isGameStarted = true; })
+    .catch(err => { log("カメラエラー: " + err); });
 }
 
 function windowResized() {
@@ -142,7 +182,6 @@ function windowResized() {
 }
 
 function updateLayout() {
-  // バット可動域：右(0.85) -> 左(0.55)
   batRangeStart = width * 0.85; 
   batRangeEnd = width * 0.55;   
   guidePositionX = width * 0.85;
@@ -172,8 +211,6 @@ function initPanels() {
         x: panelStartX + c * (panelW + panelGap),
         y: panelStartY + r * (panelH + panelGap),
         w: panelW, h: panelH,
-        centerX: panelStartX + c * (panelW + panelGap) + panelW/2,
-        centerY: panelStartY + r * (panelH + panelGap) + panelH/2,
         num: num,
         active: true
       });
@@ -182,9 +219,14 @@ function initPanels() {
 }
 
 function onResults(results) {
-  // 手が見つかったらスタート画面を消す
+  // 手が検出されたらロード画面を消す
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    document.getElementById('startScreen').style.display = 'none';
+    const startScreen = document.getElementById('startScreen');
+    if (startScreen.style.display !== 'none') {
+      startScreen.style.display = 'none';
+      log("ゲーム開始！");
+    }
+    
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
@@ -202,7 +244,7 @@ function touchStarted() { handleInput(); return false; }
 function mousePressed() { handleInput(); }
 
 function handleInput() {
-  if (!isGameStarted) return; // スタート前は反応しない
+  if (!isGameStarted) return;
   if (gameState === 5 || gameState === 4) { resetGame(); return; }
 
   if (handDetected && thumbTip && wrist) {
@@ -228,9 +270,8 @@ function resetGame() {
 }
 
 function draw() {
-  background(0);
-  
-  // 背景
+  background(0); // 常に描画リフレッシュ
+
   if (bgLoaded && bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
@@ -240,13 +281,16 @@ function draw() {
     image(bgImage, dx, dy, dw, dh);
   }
 
-  if (!isGameStarted) return; // スタート前は描画ここまで
+  // ゲーム未開始でも背景だけは見せる
+  if (!isGameStarted) return;
 
-  // カメラ映像
-  push();
-  translate(width, 0); scale(-1, 1); tint(255, 120);
-  image(videoElement, 0, 0, width, height);
-  pop();
+  // カメラ映像（薄く）
+  if (videoElement) {
+    push();
+    translate(width, 0); scale(-1, 1); tint(255, 120);
+    image(videoElement, 0, 0, width, height);
+    pop();
+  }
 
   drawPanels();
   drawAlwaysGuide();
@@ -306,11 +350,12 @@ function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 250;
-  // スタート直後はガイドを表示
-  if (handDetected) {
-    if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
-    else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 100, uiY);
+  if (!handDetected) { 
+      // 手が見つかってない時は文字を出さない（スタート画面側で出しているため）
+      return; 
   }
+  if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
+  else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 100, uiY);
 }
 
 function drawErrorScreen() {
@@ -335,18 +380,17 @@ function playGame() {
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
   currentProgressPercent = Math.round(progress * 100);
 
-  // ★座標計算：閉じる(0)=右(Start), 開く(1)=左(End)
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
-  let isBatActive = (progress >= 0.3); // 30%以上開いたら有効
+  // 30%以上開いたらスイング
+  let isBatActive = (progress >= 0.3); 
   
   let batBaseLen = 140;
   let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
-  // 角度計算：右傾き(PI/4) -> 左傾き(-PI/4)
   rotate(map(progress, 0, 1, PI/4, -PI/4));
   
   if (isBatActive) {
@@ -445,7 +489,6 @@ class Ball {
     this.x = this.startX; this.y = this.startY;
 
     let targetProgress = random(0.0, 1.0); 
-    // バット可動域(Start=右, End=左)全体をターゲットに
     let targetX = map(targetProgress, 0, 1, batRangeStart, batRangeEnd);
     let targetY = height * 0.75;
     let dirX = targetX - this.startX; let dirY = targetY - this.startY;
@@ -461,7 +504,6 @@ class Ball {
     this.isHit = true; this.ballColor = color(255, 255, 0);
     let areaW = 3 * panels[0].w + 30; 
     let areaLeft = panelStartX; let areaRight = panelStartX + areaW;
-    // progress大(1,開,左) -> 左側(areaLeft), progress小(0,閉,右) -> 右側(areaRight)
     let targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
     let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
     let sweetSpotLimit = max(100 - (level-1)*10, 30);
