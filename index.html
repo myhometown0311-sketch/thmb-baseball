@@ -3,32 +3,46 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball Professional</title>
+  <title>Thumb Baseball Pro - Pitching Mode</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
     #loading {
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
       color: white; font-size: 20px; text-align: center; text-shadow: 2px 2px 4px #000; pointer-events: none;
+      z-index: 10;
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.sound.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <div id="loading">カメラ起動中...<br>横画面でタップして開始</div>
+  <div id="loading">読み込み中...<br>stadium_bg.pngを配置してください</div>
 
 <script>
 let videoElement, hands, camera;
 let thumbTip, indexBase, wrist;
-let gameState = 1; // 1:赤線設定, 2:青線設定, 3:プレイ
+let gameState = 1; // 1:Step1設定, 2:Step2設定, 3:プレイ中
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
-let targetX = 0; // 親指の位置
+// ４．指の可動域を数値化するための変数
+let currentProgressPercent = 0; 
+
 let balls = [];
 let score = 0, combo = 0;
 let message = "", messageTimer = 0, messageColor;
+// ３．背景画像用の変数
+let bgImage;
+let bgLoaded = false; // 画像が読み込めたかどうかのフラグ
+
+// 画像などの事前読み込み
+function preload() {
+  // stadium_bg.png を読み込む。失敗したら黒背景になるように設定。
+  bgImage = loadImage('stadium_bg.png', 
+    () => { bgLoaded = true; console.log("背景画像読み込み成功"); },
+    () => { bgLoaded = false; console.log("背景画像が見つかりません。黒背景で実行します。"); }
+  );
+}
 
 function setup() {
   createCanvas(windowWidth, windowHeight);
@@ -36,7 +50,6 @@ function setup() {
   videoElement.size(width, height);
   videoElement.hide();
 
-  // スマホでもPCでも動きやすい書き方にしています
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
   hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
   hands.onResults(onResults);
@@ -52,31 +65,56 @@ function onResults(results) {
   document.getElementById('loading').style.display = 'none';
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     const lm = results.multiHandLandmarks[0];
+    // 座標計算（左右反転に対応）
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
     
+    // 現在の角度を計算
     currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
-    targetX = thumbTip.x; // 親指の位置を更新
   }
 }
 
-function touchStarted() {
+// スマホのタップ、PCのクリック両対応
+function touchStarted() { handleInput(); return false; }
+function mousePressed() { handleInput(); }
+
+function handleInput() {
   if (getAudioContext().state !== 'running') getAudioContext().resume();
   if (thumbTip) {
-    if (gameState === 1) { angleClosed = currentAngle; gameState = 2; }
-    else if (gameState === 2) { angleOpen = currentAngle; gameState = 3; }
+    if (gameState === 1) { 
+        angleClosed = currentAngle; 
+        gameState = 2; 
+    } else if (gameState === 2) { 
+        angleOpen = currentAngle; 
+        gameState = 3; 
+    }
   }
-  return false;
-}
-
-// PCのマウスクリックでも動くように念のため追加
-function mousePressed() {
-  touchStarted();
 }
 
 function draw() {
-  background(0); // 真っ黒な背景にしておく
+  // ３．背景画像の描画
+  if (bgLoaded && bgImage) {
+    // 画像のアスペクト比を維持して中央に表示（はみ出た部分はカット）
+    let imgAspect = bgImage.width / bgImage.height;
+    let canvasAspect = width / height;
+    let drawW, drawH, drawX, drawY;
+
+    if (canvasAspect > imgAspect) {
+      drawW = width;
+      drawH = width / imgAspect;
+      drawX = 0;
+      drawY = (height - drawH) / 2;
+    } else {
+      drawH = height;
+      drawW = height * imgAspect;
+      drawY = 0;
+      drawX = (width - drawW) / 2;
+    }
+    image(bgImage, drawX, drawY, drawW, drawH);
+  } else {
+    background(0); // 画像がない場合は黒背景
+  }
   
   if (gameState === 3) {
     playGame();
@@ -85,31 +123,47 @@ function draw() {
   }
 }
 
+// セットアップ画面の描画
 function drawCalibrationUI() {
+  // カメラ映像を半透明で重ねる（手を合わせやすくするため）
   push();
   translate(width, 0);
   scale(-1, 1);
+  tint(255, 150); // 半透明
   image(videoElement, 0, 0, width, height);
   pop();
 
-  // ★黄色いガイド枠を表示
-  noFill(); stroke(255, 255, 0, 150); strokeWeight(5);
-  ellipse(width/2, height/2, 250, 350);
+  // １．黄色のガイド枠の変更（グーの手をイメージした少し四角い円）
+  noFill(); stroke(255, 255, 0, 200); strokeWeight(8);
+  rectMode(CENTER);
+  // 角丸の四角形で「グー」のエリアを表現
+  rect(width/2, height/2, 300, 350, 60); 
 
-  textAlign(CENTER, CENTER); textSize(30); fill(255);
-  if (!thumbTip) { text("黄色い枠に手を映してください", width/2, height/2); return; }
+  textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
+
+  if (!thumbTip) { 
+      text("黄色い枠に合わせて\n手を「グー」にしてください", width/2, height/2); return; 
+  }
 
   if (gameState === 1) {
-    stroke(255, 0, 0); strokeWeight(5); line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
-    noStroke(); text("【STEP 1】\n親指を閉じて(赤線)タップ", width/2, height/2);
+    stroke(255, 0, 0); strokeWeight(8); line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+    noStroke(); fill(255, 50, 50);
+    text("【STEP 1】\n親指を閉じて(赤線)タップ", width/2, height/2 - 200);
   } else {
-    stroke(0, 150, 255); strokeWeight(5); line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
-    noStroke(); text("【STEP 2】\n親指を全開にして(青線)タップ", width/2, height/2);
+    stroke(0, 150, 255); strokeWeight(8); line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+    noStroke(); fill(50, 150, 255);
+    text("【STEP 2】\n親指を全開にして(青線)タップ", width/2, height/2 - 200);
   }
 }
 
+// ゲームプレイ中の処理
 function playGame() {
+  // 開閉具合を0.0〜1.0で計算
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
+  // ４．開閉率をパーセントに変換して保存
+  currentProgressPercent = Math.round(progress * 100);
+
+  // バットの位置と角度計算
   let batX = map(progress, 0, 1, width/2 - 150, width/2 + 150);
   let batY = map(progress, 0, 1, height - 100, height - 250);
 
@@ -117,26 +171,57 @@ function playGame() {
   push();
   translate(batX, batY);
   rotate(map(progress, 0, 1, -PI/6, PI/6));
-  fill(progress > 0.8 ? color(255,0,0) : (progress > 0.1 ? color(255,255,0) : 255));
-  rect(-10, 0, 20, 120);
+  // 開き具合でバットの色が変わる
+  fill(progress > 0.8 ? color(255,50,50) : (progress > 0.2 ? color(255,255,0) : color(200)));
+  stroke(0); strokeWeight(2);
+  rect(-15, 0, 30, 140, 10); // バットを少し太くリッチに
   pop();
 
-  if (frameCount % 60 === 0) balls.push(new Ball());
+  // 一定間隔でボールを投げる
+  if (frameCount % 90 === 0) balls.push(new Ball());
 
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i];
     b.update(); b.display();
-    if (!b.isHit && dist(b.x, b.y, batX, batY) < 60) {
+    
+    // 当たり判定
+    if (!b.isHit && dist(b.x, b.y, batX, batY) < 70) {
       let pct = progress * 100;
-      if (pct <= 10) { b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; }
-      else if (pct <= 80) { b.hit("hit"); score++; combo++; if(score%10===0) showMessage("イイじゃん👍", color(255,255,0)); }
-      else { b.hit("homerun"); score+=5; combo++; showMessage(combo>=50?"最高にイイじゃん👍":"ホームラン！", color(255,50,50)); }
+      // タイミング（開閉率）によって結果が変わる
+      if (pct <= 15) { 
+          b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; 
+      } else if (pct <= 85) { 
+          b.hit("hit"); score++; combo++; 
+          if(score%5===0) showMessage("ナイスヒット！", color(255,255,0)); 
+      } else { 
+          b.hit("homerun"); score+=5; combo++; 
+          showMessage("ホームラン！！", color(255,50,50)); 
+      }
     }
-    if (b.y > height + 100) balls.splice(i, 1);
+    // 画面外に出たボールを削除
+    if (b.y > height + 200 || b.x < -200 || b.x > width + 200) balls.splice(i, 1);
   }
 
-  fill(255); textSize(32); textAlign(LEFT, TOP);
+  // UI表示
+  drawGameUI();
+}
+
+function drawGameUI() {
+  // スコアとコンボ
+  fill(255); stroke(0); strokeWeight(4);
+  textSize(32); textAlign(LEFT, TOP);
   text(`Score: ${score}\nCombo: ${combo}`, 20, 20);
+
+  // ４．指の開閉率を数値化して右上に表示
+  textAlign(RIGHT, TOP);
+  text(`開閉率: ${currentProgressPercent}%`, width - 20, 20);
+  
+  // 開閉ゲージの描画
+  noStroke(); fill(100); rect(width-220, 60, 200, 20); // 背景
+  fill(currentProgressPercent > 85 ? color(255,50,50) : color(255,255,0));
+  rect(width-220, 60, map(currentProgressPercent, 0, 100, 0, 200), 20); // ゲージ
+
+  // メッセージ表示
   if (messageTimer > 0) {
     textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
     textSize(60); text(message, width/2, height/3); messageTimer--;
@@ -145,27 +230,68 @@ function playGame() {
 
 function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
-// ボールのクラス
+// ２．ボールクラスの変更（ピッチャーが投げる動き）
 class Ball {
   constructor() {
-    // ★親指(targetX)の周辺から落ちるように設定済み
-    let dropX = (targetX === 0) ? width/2 : targetX; // まだ指がない時は真ん中
-    this.x = random(dropX - 100, dropX + 100);
-    this.y = -50;
-    this.vx = random(-2, 2);
-    this.vy = random(5, 8);
+    // ピッチャーの位置（画面上部やや右側）
+    this.startX = width * 0.65;
+    this.startY = -30;
+    this.x = this.startX;
+    this.y = this.startY;
+
+    // ターゲット位置（バッターボックス付近＝画面下部中央）
+    let targetX = width / 2 + random(-50, 50); // 少しだけ左右にぶれる
+    let targetY = height * 0.8;
+
+    // ターゲットに向かうベクトルを計算
+    let dirX = targetX - this.startX;
+    let dirY = targetY - this.startY;
+    // ベクトルを正規化（長さを1にする）
+    let len = sqrt(dirX*dirX + dirY*dirY);
+    dirX /= len;
+    dirY /= len;
+
+    // 球速を設定（ランダムで変化）
+    let speed = random(9, 14); 
+    this.vx = dirX * speed;
+    this.vy = dirY * speed;
+
     this.isHit = false;
+    this.ballColor = color(255); // 白球
   }
+
   update() {
-    this.x += this.vx; this.y += this.vy;
-    if (this.isHit) this.vy += 0.8;
+    this.x += this.vx;
+    this.y += this.vy;
+    // 打たれた後は重力で落下
+    if (this.isHit) {
+        this.vy += 0.6; 
+        this.vx *= 0.99; // 空気抵抗
+    }
   }
-  display() { fill(255); ellipse(this.x, this.y, 40); }
+
+  display() {
+    // ボールの影
+    noStroke(); fill(0, 100); ellipse(this.x+5, this.y+5, 35);
+    // ボール本体
+    fill(this.ballColor); stroke(200); strokeWeight(2);
+    ellipse(this.x, this.y, 35);
+    // 縫い目（簡易的）
+    noFill(); stroke(255,0,0, 100); strokeWeight(2);
+    arc(this.x, this.y, 25, 25, PI/4, PI*3/4);
+    arc(this.x, this.y, 25, 25, PI*5/4, PI*7/4);
+  }
+
   hit(type) {
     this.isHit = true;
-    if (type === "foul") { this.vy = 2; }
-    else if (type === "hit") { this.vy = -15; this.vx *= 2; }
-    else { this.vy = -35; this.vx *= 0.5; }
+    // 打球の種類によって飛び方を変える
+    if (type === "foul") { 
+        this.vy = -5; this.vx = random(-5, 5); this.ballColor = color(200);
+    } else if (type === "hit") { 
+        this.vy = random(-15, -20); this.vx = random(-10, 10); this.ballColor = color(255,255,0);
+    } else { // homerun
+        this.vy = random(-25, -35); this.vx = random(-15, 15); this.ballColor = color(255,50,50);
+    }
   }
 }
 </script>
