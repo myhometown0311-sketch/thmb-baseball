@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball Pro - Precision Mode Fixed</title>
+  <title>Thumb Baseball Pro - Swing Mode</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -24,7 +24,7 @@
 <script>
 let videoElement, hands, camera;
 let thumbTip = null, indexBase = null, wrist = null;
-let handDetected = false; // 手が認識されているかどうかのフラグ
+let handDetected = false;
 
 let gameState = 1; // 1:Step1(閉), 2:Step2(開), 3:プレイ, 4:位置ずれエラー
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
@@ -32,7 +32,7 @@ let currentProgressPercent = 0;
 
 // 手の位置固定判定用
 let fixedWristPosition = null; 
-const ALLOWED_MOVEMENT_RADIUS = 100; // 手が動いていい範囲（少し広げました）
+const ALLOWED_MOVEMENT_RADIUS = 100;
 
 let balls = [];
 let score = 0, combo = 0;
@@ -53,8 +53,9 @@ function setup() {
   videoElement.size(width, height);
   videoElement.hide();
 
-  batRangeMin = width / 2 - 150;
-  batRangeMax = width / 2 + 150;
+  // バットの可動域（画面中央を中心に広めに取る）
+  batRangeMin = width * 0.3; // 左側（閉じた位置）
+  batRangeMax = width * 0.7; // 右側（開いた位置）
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
   hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
@@ -69,14 +70,12 @@ function setup() {
 
 function onResults(results) {
   document.getElementById('loading').style.display = 'none';
-  
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
-    
     currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
   } else {
     handDetected = false;
@@ -85,31 +84,21 @@ function onResults(results) {
   }
 }
 
-// スマホ・PC両対応の入力処理
 function touchStarted() { handleInput(); return false; }
 function mousePressed() { handleInput(); }
 
 function handleInput() {
   if (getAudioContext().state !== 'running') getAudioContext().resume();
+  if (gameState === 4) { resetGame(); return; }
 
-  // エラー画面からの復帰
-  if (gameState === 4) {
-    resetGame();
-    return;
-  }
-
-  // 手が認識されているときだけ進行
   if (handDetected && thumbTip && wrist) {
     if (gameState === 1) { 
         angleClosed = currentAngle; 
         gameState = 2; 
-        console.log("Step 1 OK");
     } else if (gameState === 2) { 
         angleOpen = currentAngle; 
-        // ここで手首の位置を固定
         fixedWristPosition = createVector(wrist.x, wrist.y);
         gameState = 3; 
-        console.log("Step 2 OK, Game Start");
     }
   }
 }
@@ -123,7 +112,6 @@ function resetGame() {
 }
 
 function draw() {
-  // 背景
   if (bgLoaded && bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
@@ -141,11 +129,10 @@ function draw() {
   image(videoElement, 0, 0, width, height);
   pop();
 
-  // 常に表示するガイド
   drawAlwaysGuide();
 
   if (gameState === 3) {
-    checkHandStability(); // 手ブレチェック
+    checkHandStability();
     if (gameState === 3) playGame();
   } else if (gameState === 4) {
     drawErrorScreen();
@@ -154,52 +141,34 @@ function draw() {
   }
 }
 
-// 手首固定ガイド（認識中は緑色になる！）
 function drawAlwaysGuide() {
   noFill(); 
   let centerX = fixedWristPosition ? fixedWristPosition.x : width/2;
   let centerY = fixedWristPosition ? fixedWristPosition.y : height/2 + 100;
 
-  // 手が認識されているなら「緑」、されていないなら「赤」
   if (handDetected) {
-    stroke(0, 255, 0); // 緑 (OK)
-    if (gameState < 3) fill(0, 255, 0, 50); // 設定中は少し色をつける
+    stroke(0, 255, 0); // OKサイン(緑)
+    if (gameState < 3) fill(0, 255, 0, 50);
   } else {
-    stroke(255, 0, 0); // 赤 (NG)
+    stroke(255, 0, 0); // NGサイン(赤)
     noFill();
   }
-  
-  strokeWeight(4);
-  ellipse(centerX, centerY, 100, 100); // 手首サークル
-  
-  strokeWeight(2);
-  rectMode(CENTER);
-  rect(centerX, centerY - 150, 300, 400, 20); // グーの枠
+  strokeWeight(4); ellipse(centerX, centerY, 100, 100);
+  strokeWeight(2); rectMode(CENTER); rect(centerX, centerY - 150, 300, 400, 20);
 }
 
 function checkHandStability() {
   if (!wrist || !fixedWristPosition) return;
-  // 記憶した位置からの距離
-  let d = dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y);
-  if (d > ALLOWED_MOVEMENT_RADIUS) {
-    gameState = 4; // 手が動きすぎたらエラー
+  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > ALLOWED_MOVEMENT_RADIUS) {
+    gameState = 4;
   }
 }
 
 function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
-  
-  if (!handDetected) { 
-      text("枠が「緑」になるように\n手を映してください", width/2, height/2 - 50); return; 
-  }
-
-  if (gameState === 1) {
-    fill(255);
-    text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", width/2, height/2 - 100);
-  } else if (gameState === 2) {
-    fill(100, 255, 255);
-    text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", width/2, height/2 - 100);
-  }
+  if (!handDetected) { text("枠が「緑」になるように\n手を映してください", width/2, height/2 - 50); return; }
+  if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", width/2, height/2 - 100);
+  else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", width/2, height/2 - 100);
 }
 
 function drawErrorScreen() {
@@ -214,18 +183,35 @@ function playGame() {
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
   currentProgressPercent = Math.round(progress * 100);
 
+  // バットの位置
   let batX = map(progress, 0, 1, batRangeMin, batRangeMax);
   let batY = map(progress, 0, 1, height - 100, height - 250);
 
-  // バット
+  // ★変更点：親指が閉じている(15%未満)ときはバットを半透明＆判定なしにする
+  let isBatActive = (progress >= 0.15);
+
   push();
   translate(batX, batY);
   rotate(map(progress, 0, 1, -PI/6, PI/6));
-  fill(progress > 0.8 ? color(255,50,50) : (progress > 0.2 ? color(255,255,0) : color(200)));
+  
+  // 閉じてるときはグレーで半透明、開くと色が付く
+  if (isBatActive) {
+    fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
+    stroke(0);
+  } else {
+    fill(100, 150); // 半透明グレー（待機状態）
+    noStroke();
+  }
   rect(-15, 0, 30, 140, 10);
+  
+  // 待機中は「Wait」などの文字を出しても分かりやすいかも
+  if (!isBatActive) {
+    fill(255); noStroke(); textSize(16); textAlign(CENTER);
+    text("待機", 0, -20);
+  }
   pop();
 
-  // ボール1個制限 & 間隔調整
+  // ボール生成
   if (balls.length === 0 && frameCount % 60 === 0) {
     balls.push(new Ball());
   }
@@ -234,14 +220,13 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // 当たり判定
-    if (!b.isHit && dist(b.x, b.y, batX, batY) < 70) {
+    // 当たり判定（バットがアクティブな時だけ！）
+    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 70) {
       let pct = progress * 100;
-      if (pct <= 15) { b.hit("foul"); showMessage("Foul", color(200)); combo=0; }
+      if (pct <= 20) { b.hit("foul"); showMessage("Foul", color(200)); combo=0; } // 振り遅れ
       else if (pct <= 85) { b.hit("hit"); score++; combo++; }
       else { b.hit("homerun"); score+=5; combo++; showMessage("Home Run!", color(255,50,50)); }
     }
-    // 画面外削除
     if (b.y > height + 100 || b.x < -200 || b.x > width + 200) balls.splice(i, 1);
   }
 
@@ -270,16 +255,17 @@ class Ball {
     this.x = this.startX;
     this.y = this.startY;
 
-    // バットの可動域内を狙う
-    let targetProgress = random(0.1, 0.9); 
+    // ★変更点：ボールは「少し開いた位置(20%)」〜「全開(100%)」の間にしか落ちない
+    // つまり「閉じたまま(0〜15%)」の場所には飛んでこない＝待機してれば当たらない
+    let targetProgress = random(0.2, 1.0); 
     let targetX = map(targetProgress, 0, 1, batRangeMin, batRangeMax);
     let targetY = height * 0.75;
 
     let dirX = targetX - this.startX;
     let dirY = targetY - this.startY;
     let len = sqrt(dirX*dirX + dirY*dirY);
-    
     let speed = random(8, 12);
+    
     this.vx = (dirX / len) * speed;
     this.vy = (dirY / len) * speed;
 
@@ -308,4 +294,5 @@ class Ball {
 </script>
 </body>
 </html>
+
 
