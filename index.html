@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Perfect Aim</title>
+  <title>Thumb Baseball - Left-Bottom Panels</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -43,7 +43,6 @@ let hitSoundOsc, hitSoundEnv;
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 
-// パネル配置計算用
 let panelStartX, panelStartY, panelW, panelH, panelGap;
 
 function preload() {
@@ -59,7 +58,6 @@ function setup() {
   videoElement.size(width, height);
   videoElement.hide();
 
-  // １．打撃音の変更（カキーン！という金属音風）
   hitSoundEnv = new p5.Envelope();
   hitSoundEnv.setADSR(0.001, 0.1, 0.2, 0.2); 
   hitSoundEnv.setRange(0.8, 0); 
@@ -68,7 +66,6 @@ function setup() {
   hitSoundOsc.amp(hitSoundEnv);
   hitSoundOsc.freq(800); 
 
-  // レイアウト初期化
   updateLayout();
   initPanels();
 
@@ -107,22 +104,22 @@ function initPanels() {
   let cols = 3; 
   let rows = 3;
   
-  // パネルサイズ調整
   panelW = width * 0.08;
   panelH = height * 0.12;
   panelGap = 10;
   
-  // ２．パネル位置の修正（画面左側、上下中央にギュッと集める）
-  panelStartX = width * 0.06; 
+  // ★変更点：パネル位置を「左下」に変更
+  panelStartX = width * 0.02; // 左端ギリギリ
   let totalH = rows * panelH + (rows - 1) * panelGap;
-  panelStartY = (height - totalH) / 2; 
+  // 画面下端から、パネル全体の高さ＋少しのマージンを引いた位置を開始点にする
+  panelStartY = height - totalH - height * 0.05; 
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       let num = r * 3 + c + 1;
       panels.push({
-        col: c, // 列番号を記憶
-        row: r, // 行番号を記憶
+        col: c, 
+        row: r, 
         x: panelStartX + c * (panelW + panelGap),
         y: panelStartY + r * (panelH + panelGap),
         w: panelW,
@@ -303,7 +300,6 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // 超感度（250px）
     if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 250) {
       playHitSound();
       let pct = progress * 100;
@@ -338,11 +334,10 @@ function checkLevelUp() {
 }
 
 function playHitSound() {
-  // １．音の変更（金属音風の高周波とピッチ変化）
   hitSoundOsc.freq(800);
   hitSoundEnv.play();
   setTimeout(() => {
-    hitSoundOsc.freq(400); // すぐに下げることで衝撃音っぽく
+    hitSoundOsc.freq(400); 
   }, 50);
 }
 
@@ -415,29 +410,16 @@ class Ball {
     this.isHit = true;
     this.ballColor = color(255, 255, 0);
 
-    // ２．狙い撃ちロジック（確実にパネル中心へ飛ばす）
-    let targetCol, targetRow;
+    let targetCol;
+    if (pct > 0.7) targetCol = 0; 
+    else if (pct < 0.4) targetCol = 2; 
+    else targetCol = 1; 
 
-    // 左右判定 (タイミング) -> 列番号 (0:左, 1:中, 2:右)
-    if (pct > 0.7) { 
-      targetCol = 0; // 左 (1,4,7)
-    } else if (pct < 0.4) {
-      targetCol = 2; // 右 (3,6,9)
-    } else {
-      targetCol = 1; // 中 (2,5,8)
-    }
+    let targetRow;
+    if (offset < 80) targetRow = 0; 
+    else if (offset < 160) targetRow = 1; 
+    else targetRow = 2; 
 
-    // 上下判定 (芯) -> 行番号 (0:上, 1:中, 2:下)
-    if (offset < 80) { 
-      targetRow = 0; // 上段 (1,2,3)
-    } else if (offset < 160) {
-      targetRow = 1; // 中段 (4,5,6)
-    } else {
-      targetRow = 2; // 下段 (7,8,9)
-    }
-
-    // パネルの座標計算
-    // panelStartX, panelStartY はグローバル変数で initPanels で計算済み
     let targetPanelX = panelStartX + targetCol * (panelW + 10) + panelW / 2;
     let targetPanelY = panelStartY + targetRow * (panelH + 10) + panelH / 2;
 
@@ -453,4 +435,3 @@ class Ball {
 </script>
 </body>
 </html>
-
