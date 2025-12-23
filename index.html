@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball Pro - High Speed</title>
+  <title>Thumb Baseball Pro - Direction Control</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -28,7 +28,6 @@ let handDetected = false;
 
 let gameState = 1; // 1:Step1(閉), 2:Step2(開), 3:プレイ, 4:位置ずれエラー
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
-let currentProgressPercent = 0; 
 
 let fixedWristPosition = null; 
 const ALLOWED_MOVEMENT_RADIUS = 100;
@@ -38,11 +37,10 @@ let score = 0, combo = 0;
 let message = "", messageTimer = 0, messageColor;
 let bgImage, bgLoaded = false;
 
-let batRangeStart, batRangeEnd; // Start=右(閉), End=左(開)
+let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 
 function preload() {
-  // １．背景画像の読み込み
   bgImage = loadImage('stadium_bg.png', 
     () => { bgLoaded = true; },
     () => { bgLoaded = false; console.log("画像なし"); }
@@ -117,7 +115,6 @@ function resetGame() {
 }
 
 function draw() {
-  // 背景描画
   if (bgLoaded && bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
@@ -190,8 +187,8 @@ function drawErrorScreen() {
 
 function playGame() {
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
-  currentProgressPercent = Math.round(progress * 100);
-
+  
+  // バット位置
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
 
@@ -224,7 +221,7 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // ４．バット感度を上げる（当たり判定距離を拡大 70 -> 100）
+    // 当たり判定 (感度高め: 100px)
     if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 100) {
       let pct = progress * 100;
       if (pct <= 20) { b.hit("foul"); showMessage("Foul", color(200)); combo=0; }
@@ -234,18 +231,48 @@ function playGame() {
     if (b.y > height + 100 || b.x < -200 || b.x > width + 200) balls.splice(i, 1);
   }
 
-  drawGameUI();
+  drawGameUI(progress);
 }
 
-function drawGameUI() {
+// １．動かした位置のフィードバック ＆ ２．可動域の数値化
+function drawGameUI(progress) {
   fill(255); stroke(0); strokeWeight(4);
   textSize(32); textAlign(LEFT, TOP);
-  // ６．スコア表記を「打点」に変更
   text(`打点: ${score}`, 20, 20);
 
-  textAlign(RIGHT, TOP);
-  text(`開閉: ${currentProgressPercent}%`, width - 20, 20);
+  // --- 右上のフィードバックエリア ---
+  let uiW = 220;
+  let uiH = 80;
+  let uiX = width - uiW - 20;
+  let uiY = 20;
+
+  // 背景パネル
+  fill(0, 150); noStroke();
+  rect(uiX, uiY, uiW, uiH, 10);
+
+  // ２．角度を数値化して表示（ラジアン -> 度数法に変換）
+  let deg = degrees(currentAngle);
+  fill(255); textAlign(RIGHT, TOP); textSize(24);
+  text(`角度: ${deg.toFixed(1)}°`, width - 30, uiY + 10);
+
+  // １．動かした位置のフィードバック（入力ゲージ）
+  let barX = uiX + 10;
+  let barY = uiY + 45;
+  let barW = 200;
+  let barH = 20;
   
+  // ゲージの枠
+  stroke(255); strokeWeight(2); noFill();
+  rect(barX, barY, barW, barH);
+  
+  // 現在の入力値をバーで表示
+  noStroke();
+  if (progress < 0.15) fill(150); // 待機ゾーン
+  else fill(progress > 0.8 ? color(255, 50, 50) : color(255, 255, 0));
+  
+  let currentW = map(progress, 0, 1, 0, barW);
+  rect(barX, barY, currentW, barH);
+
   if (messageTimer > 0) {
     textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
     textSize(60); text(message, width/2, height/3); messageTimer--;
@@ -256,14 +283,11 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor() {
-    // ２．投げる位置を「左側」に変更（画面左端の真ん中あたり）
     this.startX = 0; 
-    this.startY = height * 0.4; // 上から40%の位置（サイドスロー気味）
+    this.startY = height * 0.4;
     this.x = this.startX;
     this.y = this.startY;
 
-    // ５．投げる位置を指の動く範囲内（バットが届く範囲）だけに限定
-    // 0.0(右)〜1.0(左) の全範囲をターゲットにする
     let targetProgress = random(0.0, 1.0); 
     let targetX = map(targetProgress, 0, 1, batRangeStart, batRangeEnd);
     let targetY = height * 0.75;
@@ -271,8 +295,6 @@ class Ball {
     let dirX = targetX - this.startX;
     let dirY = targetY - this.startY;
     let len = sqrt(dirX*dirX + dirY*dirY);
-    
-    // ３．ボール速度を速くする（15〜20）
     let speed = random(15, 20); 
     
     this.vx = (dirX / len) * speed;
@@ -285,7 +307,10 @@ class Ball {
   update() {
     this.x += this.vx;
     this.y += this.vy;
-    if (this.isHit) { this.vy += 0.8; this.vx *= 0.98; }
+    if (this.isHit) { 
+      this.vy += 0.5; // 重力
+      this.vx *= 0.99; // 空気抵抗
+    }
   }
 
   display() {
@@ -293,13 +318,30 @@ class Ball {
     ellipse(this.x, this.y, 30);
   }
 
+  // ３．打球方向の打ち分け
   hit(type) {
     this.isHit = true;
-    if (type === "foul") { this.vy = -5; this.vx = 5; this.ballColor = color(150); }
-    else if (type === "hit") { this.vy = -15; this.vx = random(5, 15); this.ballColor = color(255,255,0); }
-    else { this.vy = -30; this.vx = random(10, 25); this.ballColor = color(255,50,50); }
+    if (type === "foul") { 
+      // ファール：適当に散らす（ランダム）
+      this.vy = random(-10, 10); 
+      this.vx = random(-10, 10); 
+      this.ballColor = color(150); 
+    } 
+    else if (type === "hit") { 
+      // ヒット：左下へ（ゴロ・ライナー）
+      this.vx = random(-15, -25); // 左へ速く
+      this.vy = random(5, 15);    // 下へ
+      this.ballColor = color(255,255,0); 
+    } 
+    else { 
+      // ホームラン：左上へ勢いよく
+      this.vx = random(-20, -30); // 左へ超高速
+      this.vy = random(-20, -30); // 上へ高く
+      this.ballColor = color(255,50,50); 
+    }
   }
 }
 </script>
 </body>
 </html>
+
