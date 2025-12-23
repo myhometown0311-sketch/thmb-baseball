@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball Pro - Right Batter</title>
+  <title>Thumb Baseball Pro - High Speed</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -30,7 +30,6 @@ let gameState = 1; // 1:Step1(閉), 2:Step2(開), 3:プレイ, 4:位置ずれエ
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
 let currentProgressPercent = 0; 
 
-// 手の位置固定判定用
 let fixedWristPosition = null; 
 const ALLOWED_MOVEMENT_RADIUS = 100;
 
@@ -39,11 +38,11 @@ let score = 0, combo = 0;
 let message = "", messageTimer = 0, messageColor;
 let bgImage, bgLoaded = false;
 
-// バットの可動域とガイドの位置
 let batRangeStart, batRangeEnd; // Start=右(閉), End=左(開)
 let guidePositionX, guidePositionY;
 
 function preload() {
+  // １．背景画像の読み込み
   bgImage = loadImage('stadium_bg.png', 
     () => { bgLoaded = true; },
     () => { bgLoaded = false; console.log("画像なし"); }
@@ -56,12 +55,10 @@ function setup() {
   videoElement.size(width, height);
   videoElement.hide();
 
-  // ★変更点：レイアウト設定
-  // バットの開始位置（閉じた時）を画面右側、終了位置（開いた時）を画面中央寄りへ
-  batRangeStart = width * 0.85; // 右側
-  batRangeEnd = width * 0.55;   // 左側（スイング先）
+  // バットの可動域（右から左へ）
+  batRangeStart = width * 0.85; 
+  batRangeEnd = width * 0.55;   
   
-  // ガイドの位置も画面右側に固定
   guidePositionX = width * 0.85;
   guidePositionY = height / 2 + 100;
 
@@ -120,6 +117,7 @@ function resetGame() {
 }
 
 function draw() {
+  // 背景描画
   if (bgLoaded && bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
@@ -131,7 +129,6 @@ function draw() {
     background(0);
   }
 
-  // カメラ映像（薄く）
   push();
   translate(width, 0); scale(-1, 1); tint(255, 120);
   image(videoElement, 0, 0, width, height);
@@ -151,15 +148,14 @@ function draw() {
 
 function drawAlwaysGuide() {
   noFill(); 
-  // ★変更点：ガイドの位置を右側に固定
   let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
   let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
 
   if (handDetected) {
-    stroke(0, 255, 0); // OK(緑)
+    stroke(0, 255, 0); 
     if (gameState < 3) fill(0, 255, 0, 50);
   } else {
-    stroke(255, 0, 0); // NG(赤)
+    stroke(255, 0, 0); 
     noFill();
   }
   strokeWeight(4); ellipse(centerX, centerY, 100, 100);
@@ -175,14 +171,12 @@ function checkHandStability() {
 
 function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
-  
-  // ガイドの近くに文字を表示
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 250;
 
   if (!handDetected) { text("右側の枠が「緑」になるように\n手を映してください", width/2, height/2); return; }
   
-  if (gameState === 1) text("【STEP 1】\n手首を右の丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
+  if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
   else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 100, uiY);
 }
 
@@ -198,15 +192,13 @@ function playGame() {
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
   currentProgressPercent = Math.round(progress * 100);
 
-  // ★変更点：バットは右(閉)から左(開)へ振る
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
 
-  let isBatActive = (progress >= 0.15); // 少し開かないと打てない
+  let isBatActive = (progress >= 0.15); 
 
   push();
   translate(batX, batY);
-  // 角度も右傾きから左傾きへ
   rotate(map(progress, 0, 1, PI/4, -PI/4));
   
   if (isBatActive) {
@@ -232,7 +224,8 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 70) {
+    // ４．バット感度を上げる（当たり判定距離を拡大 70 -> 100）
+    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 100) {
       let pct = progress * 100;
       if (pct <= 20) { b.hit("foul"); showMessage("Foul", color(200)); combo=0; }
       else if (pct <= 85) { b.hit("hit"); score++; combo++; }
@@ -246,11 +239,10 @@ function playGame() {
 
 function drawGameUI() {
   fill(255); stroke(0); strokeWeight(4);
-  // スコア表示は左上
   textSize(32); textAlign(LEFT, TOP);
-  text(`Score: ${score}`, 20, 20);
+  // ６．スコア表記を「打点」に変更
+  text(`打点: ${score}`, 20, 20);
 
-  // 開閉率は右上に（バッターの近く）
   textAlign(RIGHT, TOP);
   text(`開閉: ${currentProgressPercent}%`, width - 20, 20);
   
@@ -264,23 +256,24 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor() {
-    // ★変更点：ピッチャーは左上から投げる
-    this.startX = width * 0.15; // 左側
-    this.startY = -30;
+    // ２．投げる位置を「左側」に変更（画面左端の真ん中あたり）
+    this.startX = 0; 
+    this.startY = height * 0.4; // 上から40%の位置（サイドスロー気味）
     this.x = this.startX;
     this.y = this.startY;
 
-    // ★変更点：ターゲットは右側のバット可動域
-    // 親指を開いたあたり(batRangeEnd)を狙う
-    let targetProgress = random(0.2, 1.0); 
-    // 右側の打撃ゾーンをターゲットにする
+    // ５．投げる位置を指の動く範囲内（バットが届く範囲）だけに限定
+    // 0.0(右)〜1.0(左) の全範囲をターゲットにする
+    let targetProgress = random(0.0, 1.0); 
     let targetX = map(targetProgress, 0, 1, batRangeStart, batRangeEnd);
     let targetY = height * 0.75;
 
     let dirX = targetX - this.startX;
     let dirY = targetY - this.startY;
     let len = sqrt(dirX*dirX + dirY*dirY);
-    let speed = random(9, 13); // 少し速めに調整
+    
+    // ３．ボール速度を速くする（15〜20）
+    let speed = random(15, 20); 
     
     this.vx = (dirX / len) * speed;
     this.vy = (dirY / len) * speed;
@@ -302,10 +295,9 @@ class Ball {
 
   hit(type) {
     this.isHit = true;
-    // 打ったら左上（センター方向）へ飛び返す演出
-    if (type === "foul") { this.vy = -5; this.vx = 2; this.ballColor = color(150); }
-    else if (type === "hit") { this.vy = -15; this.vx = random(-5, -15); this.ballColor = color(255,255,0); }
-    else { this.vy = -30; this.vx = random(-10, -25); this.ballColor = color(255,50,50); }
+    if (type === "foul") { this.vy = -5; this.vx = 5; this.ballColor = color(150); }
+    else if (type === "hit") { this.vy = -15; this.vx = random(5, 15); this.ballColor = color(255,255,0); }
+    else { this.vy = -30; this.vx = random(10, 25); this.ballColor = color(255,50,50); }
   }
 }
 </script>
