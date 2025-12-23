@@ -30,7 +30,7 @@
 let videoElement, hands, camera;
 let thumbTip, indexBase, wrist;
 let gameState = 1; // 1:赤線設定, 2:青線設定, 3:プレイ
-let angleClosed = 0, angleOpen = 0, currentAngle = 0; targetX = thumbTip.x;
+let angleClosed = 0, angleOpen = 0, currentAngle = 0; let targetX = 0;
 let balls = [];
 let score = 0, combo = 0;
 let bgImage, soundHit, soundHomerun, soundFoul;
@@ -64,18 +64,20 @@ function setup() {
 }
 
 
-function onResults(results) {currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
-    targetX = thumbTip.x; // ★これを追加して親指の位置を記録する
-  }
+function onResults(results) {
   document.getElementById('loading').style.display = 'none';
-
-if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-  const lm = results.multiHandLandmarks[0];
-  thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
-  targetX = thumbTip.x;
-  currentAngle = p5.Vector
-    .sub(indexBase, wrist)
-    .angleBetween(p5.Vector.sub(thumbTip, wrist));
+  
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const lm = results.multiHandLandmarks[0];
+    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
+    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
+    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    
+    currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
+    
+    // ★ここで親指の位置を更新
+    targetX = thumbTip.x;
+  }
 }
 
 function touchStarted() {
@@ -159,7 +161,7 @@ function playGame() {
       if (pct <= 10) { b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; }
       else if (pct <= 80) { b.hit("hit"); score++; combo++; if(score%10===0) showMessage("イイじゃん👍", color(255,255,0)); }
       else { b.hit("homerun"); score+=5; combo++; showMessage(combo>=50?"最高にイイじゃん👍":"ホームラン！", color(255,50,50)); }
-    constructor() {
+    class Ball {      constructor() {
         // 画面全体ではなく、親指がいる周辺（左右100px以内）から落とす
         this.x = random(targetX - 100, targetX + 100); 
         this.y = -50;
@@ -180,6 +182,7 @@ function mousePressed(){console.log("tap ok");}
 </script> 
 </body>
 </html>
+
 
 
 
