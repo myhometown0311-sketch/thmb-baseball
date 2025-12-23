@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Left-Bottom Panels</title>
+  <title>Thumb Baseball - Pro Realism</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -43,7 +43,8 @@ let hitSoundOsc, hitSoundEnv;
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 
-let panelStartX, panelStartY, panelW, panelH, panelGap;
+// パネル配置用
+let panelStartX, panelStartY;
 
 function preload() {
   bgImage = loadImage('stadium_bg.png', 
@@ -58,10 +59,10 @@ function setup() {
   videoElement.size(width, height);
   videoElement.hide();
 
+  // カキーン音設定
   hitSoundEnv = new p5.Envelope();
-  hitSoundEnv.setADSR(0.001, 0.1, 0.2, 0.2); 
+  hitSoundEnv.setADSR(0.001, 0.1, 0.2, 0.5); 
   hitSoundEnv.setRange(0.8, 0); 
-  
   hitSoundOsc = new p5.Oscillator('triangle'); 
   hitSoundOsc.amp(hitSoundEnv);
   hitSoundOsc.freq(800); 
@@ -85,6 +86,7 @@ function windowResized() {
   updateLayout();
   let oldPanels = panels;
   initPanels();
+  // パネルの状態を引き継ぐ
   if (oldPanels.length === panels.length) {
     for(let i=0; i<panels.length; i++) {
       panels[i].active = oldPanels[i].active;
@@ -104,15 +106,23 @@ function initPanels() {
   let cols = 3; 
   let rows = 3;
   
-  panelW = width * 0.08;
-  panelH = height * 0.12;
-  panelGap = 10;
+  // ２．レベルに応じてパネルサイズを小さくする
+  // レベル1=100%, レベル2=90%, レベル3=80% ... (最小50%)
+  let shrinkRate = constrain(1.0 - (level - 1) * 0.1, 0.5, 1.0);
   
-  // ★変更点：パネル位置を「左下」に変更
-  panelStartX = width * 0.02; // 左端ギリギリ
+  let basePanelW = width * 0.08;
+  let basePanelH = height * 0.12;
+  
+  let panelW = basePanelW * shrinkRate;
+  let panelH = basePanelH * shrinkRate;
+  
+  // 隙間は逆に少し広げてバランスを取る
+  let panelGap = 10 + (1 - shrinkRate) * 20;
+
+  // 左下配置
+  panelStartX = width * 0.02; 
   let totalH = rows * panelH + (rows - 1) * panelGap;
-  // 画面下端から、パネル全体の高さ＋少しのマージンを引いた位置を開始点にする
-  panelStartY = height - totalH - height * 0.05; 
+  let panelStartY = height - totalH - height * 0.05; 
 
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
@@ -124,6 +134,8 @@ function initPanels() {
         y: panelStartY + r * (panelH + panelGap),
         w: panelW,
         h: panelH,
+        centerX: panelStartX + c * (panelW + panelGap) + panelW/2, // 中心座標を記録
+        centerY: panelStartY + r * (panelH + panelGap) + panelH/2,
         num: num,
         active: true
       });
@@ -209,8 +221,11 @@ function draw() {
 
 function drawPanels() {
   if (panels.every(p => !p.active)) {
-    showMessage("PERFECT! Reset!", color(0, 255, 255));
-    if (frameCount % 60 === 0) initPanels(); 
+    showMessage("PERFECT! Next Level!", color(0, 255, 255));
+    if (frameCount % 60 === 0) {
+       // 全クリアしたらパネル復活（この時、レベルに応じたサイズになる）
+       initPanels(); 
+    }
   }
 
   for (let p of panels) {
@@ -218,7 +233,7 @@ function drawPanels() {
       fill(0, 255, 0, 150); 
       stroke(255); strokeWeight(3);
       rect(p.x, p.y, p.w, p.h, 5);
-      fill(255); noStroke(); textSize(40); textStyle(BOLD); textAlign(CENTER, CENTER);
+      fill(255); noStroke(); textSize(min(p.w, p.h)*0.6); textStyle(BOLD); textAlign(CENTER, CENTER);
       text(p.num, p.x + p.w/2, p.y + p.h/2);
     } else {
       fill(50, 50); stroke(100); strokeWeight(1);
@@ -278,6 +293,10 @@ function playGame() {
 
   let isBatActive = (progress >= 0.1); 
 
+  // ３．レベルアップでバットを短くする
+  let batBaseLen = 140;
+  let batLen = max(batBaseLen - (level - 1) * 10, 50); // 最短50px
+
   push();
   translate(batX, batY);
   rotate(map(progress, 0, 1, PI/4, -PI/4));
@@ -289,7 +308,8 @@ function playGame() {
     fill(100, 150);
     noStroke();
   }
-  rect(-15, 0, 30, 140, 10);
+  // バット描画
+  rect(-15, 0, 30, batLen, 10);
   pop();
 
   if (balls.length === 0 && frameCount % 60 === 0) {
@@ -300,11 +320,15 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 250) {
+    // ３．レベルアップで判定を厳しくする
+    // レベル1=250px (超接待), レベル上がると減る (最小80px)
+    let hitThreshold = max(250 - (level - 1) * 20, 80);
+
+    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < hitThreshold) {
       playHitSound();
       let pct = progress * 100;
       let hitOffset = dist(b.x, b.y, batX, batY); 
-      b.hit(pct, hitOffset);
+      b.hit(progress, hitOffset); // pctではなくprogress(0.0-1.0)を渡す
     }
 
     if (b.isHit) {
@@ -337,8 +361,8 @@ function playHitSound() {
   hitSoundOsc.freq(800);
   hitSoundEnv.play();
   setTimeout(() => {
-    hitSoundOsc.freq(400); 
-  }, 50);
+    hitSoundOsc.freq(1200); // 金属的な余韻
+  }, 30);
 }
 
 function drawGameUI(progress) {
@@ -406,25 +430,36 @@ class Ball {
     ellipse(this.x, this.y, 30);
   }
 
-  hit(pct, offset) {
+  hit(progress, offset) {
     this.isHit = true;
     this.ballColor = color(255, 255, 0);
 
-    let targetCol;
-    if (pct > 0.7) targetCol = 0; 
-    else if (pct < 0.4) targetCol = 2; 
-    else targetCol = 1; 
+    // １．打球角度の調整（アナログ）
+    // progress 0.2(右) <-> 0.8(左) をパネルエリアの左右幅にマッピング
+    
+    // パネルエリアの全幅
+    let areaW = 3 * panels[0].w + 20; // 3列分+隙間
+    let areaLeft = panelStartX;
+    let areaRight = panelStartX + areaW;
 
-    let targetRow;
-    if (offset < 80) targetRow = 0; 
-    else if (offset < 160) targetRow = 1; 
-    else targetRow = 2; 
+    // progressが大きい(左へ振る)ほど、左(X座標小)へ飛ぶ
+    // progressが小さい(右へ流す)ほど、右(X座標大)へ飛ぶ
+    // マッピングを逆にする： 0.2 -> areaRight, 0.8 -> areaLeft
+    let targetX = map(progress, 0.2, 0.9, areaRight, areaLeft);
 
-    let targetPanelX = panelStartX + targetCol * (panelW + 10) + panelW / 2;
-    let targetPanelY = panelStartY + targetRow * (panelH + 10) + panelH / 2;
+    // 上下方向の調整（オフセットによる）
+    // 芯に近い(0) -> 上段, 遠い(200) -> 下段
+    let areaTop = panels[0].y;
+    let areaBottom = panels[8].y + panels[8].h;
+    
+    // 判定基準もレベルに応じて厳しくなる
+    let sweetSpotLimit = max(100 - (level-1)*10, 30);
+    
+    let targetY = map(offset, 0, sweetSpotLimit * 2, areaTop, areaBottom);
 
-    let dx = targetPanelX - this.x;
-    let dy = targetPanelY - this.y;
+    // ベクトル計算
+    let dx = targetX - this.x;
+    let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
     
     let flySpeed = 40; 
