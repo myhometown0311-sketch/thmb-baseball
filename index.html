@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Fix Reverse</title>
+  <title>Thumb Baseball - Fix Sensitivity</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -65,14 +65,12 @@ function preload() {
 }
 
 function setup() {
-  // スマホ対策：解像度を1に固定
   pixelDensity(1); 
   createCanvas(windowWidth, windowHeight);
   videoElement = createCapture(VIDEO);
   videoElement.size(width, height);
   videoElement.hide();
 
-  // 音声設定
   hitSoundEnv = new p5.Envelope();
   hitSoundEnv.setADSR(0.001, 0.1, 0.2, 0.5); 
   hitSoundEnv.setRange(0.8, 0); 
@@ -296,27 +294,31 @@ function playGame() {
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
   currentProgressPercent = Math.round(progress * 100);
 
-  // ★修正ポイント：StartとEndを入れ替えて動きを反転
-  // 閉じる(0) = Start(Right), 開く(1) = End(Left) 
-  // → もしこれが逆なら、ここを逆にします。
-  // 今回は「開くと閉じるの動きが逆」とのことなので、座標の割り当てをスワップします。
-  let batX = map(progress, 0, 1, batRangeEnd, batRangeStart); // ←ここを反転しました
+  // 反転ロジック維持
+  let batX = map(progress, 0, 1, batRangeEnd, batRangeStart);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
-  let isBatActive = (progress >= 0.1); 
+  // ★修正：判定を厳しくする（0.3以上開かないと反応しない）
+  let isBatActive = (progress >= 0.3); 
+  
   let batBaseLen = 140;
   let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
-  // 回転も反転
   rotate(map(progress, 0, 1, -PI/4, PI/4)); 
   if (isBatActive) {
     fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0);
   } else {
-    fill(100, 150); noStroke();
+    fill(100, 150); noStroke(); // 待機状態
   }
   rect(-15, 0, 30, batLen, 10);
+
+  // 待機中の表示
+  if (!isBatActive) {
+    fill(255); textSize(20); textAlign(CENTER); noStroke();
+    text("WAIT", 0, -20);
+  }
   pop();
 
   if (balls.length === 0 && frameCount % 60 === 0) {
@@ -415,7 +417,7 @@ class Ball {
     this.isHit = true; this.ballColor = color(255, 255, 0);
     let areaW = 3 * panels[0].w + 30; 
     let areaLeft = panelStartX; let areaRight = panelStartX + areaW;
-    let targetX = map(progress, 0.2, 0.9, areaRight, areaLeft);
+    let targetX = map(progress, 0.3, 0.9, areaRight, areaLeft); // 0.3以上で狙えるように調整
     let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
     let sweetSpotLimit = max(100 - (level-1)*10, 30);
     let targetY = map(offset, 0, sweetSpotLimit * 2, areaTop, areaBottom);
