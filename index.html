@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Pro Realism</title>
+  <title>Thumb Baseball - Final UI</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -11,6 +11,10 @@
       position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
       color: white; font-size: 20px; text-align: center; text-shadow: 2px 2px 4px #000; pointer-events: none;
       z-index: 10;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      border: 2px solid white;
     }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
@@ -19,7 +23,11 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <div id="loading">読み込み中...<br>stadium_bg.pngを配置してください</div>
+  <div id="loading">
+    システム読み込み中...<br><br>
+    <span style="color: #ffff00; font-weight: bold; font-size: 24px;">スマホは「横画面」にしてください</span><br><br>
+    stadium_bg.pngを配置してください
+  </div>
 
 <script>
 let videoElement, hands, camera;
@@ -43,7 +51,6 @@ let hitSoundOsc, hitSoundEnv;
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 
-// パネル配置用
 let panelStartX, panelStartY;
 
 function preload() {
@@ -59,7 +66,6 @@ function setup() {
   videoElement.size(width, height);
   videoElement.hide();
 
-  // カキーン音設定
   hitSoundEnv = new p5.Envelope();
   hitSoundEnv.setADSR(0.001, 0.1, 0.2, 0.5); 
   hitSoundEnv.setRange(0.8, 0); 
@@ -86,7 +92,6 @@ function windowResized() {
   updateLayout();
   let oldPanels = panels;
   initPanels();
-  // パネルの状態を引き継ぐ
   if (oldPanels.length === panels.length) {
     for(let i=0; i<panels.length; i++) {
       panels[i].active = oldPanels[i].active;
@@ -106,20 +111,13 @@ function initPanels() {
   let cols = 3; 
   let rows = 3;
   
-  // ２．レベルに応じてパネルサイズを小さくする
-  // レベル1=100%, レベル2=90%, レベル3=80% ... (最小50%)
   let shrinkRate = constrain(1.0 - (level - 1) * 0.1, 0.5, 1.0);
-  
   let basePanelW = width * 0.08;
   let basePanelH = height * 0.12;
-  
   let panelW = basePanelW * shrinkRate;
   let panelH = basePanelH * shrinkRate;
-  
-  // 隙間は逆に少し広げてバランスを取る
   let panelGap = 10 + (1 - shrinkRate) * 20;
 
-  // 左下配置
   panelStartX = width * 0.02; 
   let totalH = rows * panelH + (rows - 1) * panelGap;
   let panelStartY = height - totalH - height * 0.05; 
@@ -128,13 +126,11 @@ function initPanels() {
     for (let c = 0; c < cols; c++) {
       let num = r * 3 + c + 1;
       panels.push({
-        col: c, 
-        row: r, 
+        col: c, row: r, 
         x: panelStartX + c * (panelW + panelGap),
         y: panelStartY + r * (panelH + panelGap),
-        w: panelW,
-        h: panelH,
-        centerX: panelStartX + c * (panelW + panelGap) + panelW/2, // 中心座標を記録
+        w: panelW, h: panelH,
+        centerX: panelStartX + c * (panelW + panelGap) + panelW/2,
         centerY: panelStartY + r * (panelH + panelGap) + panelH/2,
         num: num,
         active: true
@@ -222,10 +218,7 @@ function draw() {
 function drawPanels() {
   if (panels.every(p => !p.active)) {
     showMessage("PERFECT! Next Level!", color(0, 255, 255));
-    if (frameCount % 60 === 0) {
-       // 全クリアしたらパネル復活（この時、レベルに応じたサイズになる）
-       initPanels(); 
-    }
+    if (frameCount % 60 === 0) initPanels(); 
   }
 
   for (let p of panels) {
@@ -265,12 +258,17 @@ function checkHandStability() {
   }
 }
 
+// １．起動画面の指示テキストを変更
 function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 250;
 
-  if (!handDetected) { text("右側の枠が「緑」になるように\n手を映してください", width/2, height/2); return; }
+  if (!handDetected) { 
+      // ２．横画面指示と具体的な手の指示
+      text("【重要】スマホは横画面にしてください\n\n手をグーにして\n掌(てのひら)側をカメラに向けてください", width/2, height/2); 
+      return; 
+  }
   
   if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
   else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 100, uiY);
@@ -290,12 +288,9 @@ function playGame() {
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
-
   let isBatActive = (progress >= 0.1); 
-
-  // ３．レベルアップでバットを短くする
   let batBaseLen = 140;
-  let batLen = max(batBaseLen - (level - 1) * 10, 50); // 最短50px
+  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
@@ -308,7 +303,6 @@ function playGame() {
     fill(100, 150);
     noStroke();
   }
-  // バット描画
   rect(-15, 0, 30, batLen, 10);
   pop();
 
@@ -320,15 +314,13 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // ３．レベルアップで判定を厳しくする
-    // レベル1=250px (超接待), レベル上がると減る (最小80px)
     let hitThreshold = max(250 - (level - 1) * 20, 80);
 
     if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < hitThreshold) {
       playHitSound();
       let pct = progress * 100;
       let hitOffset = dist(b.x, b.y, batX, batY); 
-      b.hit(progress, hitOffset); // pctではなくprogress(0.0-1.0)を渡す
+      b.hit(progress, hitOffset); 
     }
 
     if (b.isHit) {
@@ -361,7 +353,7 @@ function playHitSound() {
   hitSoundOsc.freq(800);
   hitSoundEnv.play();
   setTimeout(() => {
-    hitSoundOsc.freq(1200); // 金属的な余韻
+    hitSoundOsc.freq(1200); 
   }, 30);
 }
 
@@ -372,14 +364,22 @@ function drawGameUI(progress) {
   text(`打点: ${score}`, width - 20, 20);
   text(`Lv.${level}`, width - 20, 60);
 
-  let uiW = 200; let uiX = width - uiW - 20; let uiY = 100;
+  // ３．バットの可動範囲ゲージとして表記
+  let uiW = 220; let uiX = width - uiW - 20; let uiY = 100;
+  
+  // 背景
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
   
-  let deg = degrees(currentAngle);
-  fill(255); textAlign(RIGHT, TOP); textSize(24);
-  text(`角度: ${deg.toFixed(1)}°`, width - 30, uiY + 10);
+  // ラベル "可動域ゲージ"
+  fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
+  text("可動域ゲージ", uiX + uiW/2, uiY + 5);
   
-  let barX = uiX + 10; let barY = uiY + 45; let barW = 180;
+  // 閉・開のラベル
+  textAlign(LEFT, TOP); textSize(12); text("閉", uiX + 10, uiY + 25);
+  textAlign(RIGHT, TOP); text("開", uiX + uiW - 10, uiY + 25);
+
+  // ゲージ本体
+  let barX = uiX + 10; let barY = uiY + 45; let barW = 200;
   stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 20);
   noStroke(); fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
   rect(barX, barY, map(progress, 0, 1, 0, barW), 20);
@@ -434,30 +434,19 @@ class Ball {
     this.isHit = true;
     this.ballColor = color(255, 255, 0);
 
-    // １．打球角度の調整（アナログ）
-    // progress 0.2(右) <-> 0.8(左) をパネルエリアの左右幅にマッピング
-    
-    // パネルエリアの全幅
-    let areaW = 3 * panels[0].w + 20; // 3列分+隙間
+    let areaW = 3 * panels[0].w + 20; 
     let areaLeft = panelStartX;
     let areaRight = panelStartX + areaW;
 
-    // progressが大きい(左へ振る)ほど、左(X座標小)へ飛ぶ
-    // progressが小さい(右へ流す)ほど、右(X座標大)へ飛ぶ
-    // マッピングを逆にする： 0.2 -> areaRight, 0.8 -> areaLeft
     let targetX = map(progress, 0.2, 0.9, areaRight, areaLeft);
 
-    // 上下方向の調整（オフセットによる）
-    // 芯に近い(0) -> 上段, 遠い(200) -> 下段
     let areaTop = panels[0].y;
     let areaBottom = panels[8].y + panels[8].h;
     
-    // 判定基準もレベルに応じて厳しくなる
     let sweetSpotLimit = max(100 - (level-1)*10, 30);
     
     let targetY = map(offset, 0, sweetSpotLimit * 2, areaTop, areaBottom);
 
-    // ベクトル計算
     let dx = targetX - this.x;
     let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
