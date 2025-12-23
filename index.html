@@ -3,19 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Final Swing Fix</title>
+  <title>Thumb Baseball - Safe Start</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
-    #loading {
-      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-      color: white; font-size: 20px; text-align: center; text-shadow: 2px 2px 4px #000; pointer-events: none;
-      z-index: 10;
-      background: rgba(0, 0, 0, 0.8);
-      padding: 20px;
-      border-radius: 10px;
-      border: 2px solid white;
+    
+    /* スタート画面のスタイル */
+    #startScreen {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.9);
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 20; color: white; text-align: center;
     }
+    #startBtn {
+      margin-top: 20px; padding: 15px 40px; font-size: 24px; font-weight: bold;
+      color: black; background: #ffff00; border: none; border-radius: 10px; cursor: pointer;
+    }
+    #loadingText { display: none; margin-top: 20px; font-size: 18px; color: #00ff00; }
   </style>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.sound.min.js"></script>
@@ -23,19 +27,22 @@
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <div id="loading">
-    システム読み込み中...<br><br>
-    <span style="color: #ffff00; font-weight: bold; font-size: 24px;">スマホは「横画面」にしてください</span><br><br>
-    stadium_bg.pngを配置してください
+
+  <div id="startScreen">
+    <h1>Thumb Baseball</h1>
+    <p>【重要】スマホは横画面にしてください</p>
+    <p>カメラの許可を求めたら「許可」を押してください</p>
+    <button id="startBtn" onclick="startGame()">ゲームスタート</button>
+    <div id="loadingText">システム起動中...<br>手を映してください</div>
   </div>
 
 <script>
-// --- 変数定義 ---
 let videoElement, hands, camera;
 let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
+let isGameStarted = false; // スタートボタン管理
 
-let gameState = 1; // 1:Step1, 2:Step2, 3:Play, 4:Error, 5:GameOver
+let gameState = 1; 
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
 let currentProgressPercent = 0; 
 let fixedWristPosition = null; 
@@ -64,25 +71,53 @@ function preload() {
   );
 }
 
+// --- スタートボタンが押されたら実行される ---
+function startGame() {
+  document.getElementById('startBtn').style.display = 'none';
+  document.getElementById('loadingText').style.display = 'block';
+  
+  // オーディオコンテキストの開始（ユーザー操作が必要）
+  userStartAudio().then(() => {
+    audioStarted = true;
+    
+    // カメラとMediaPipeの開始
+    initCameraAndHands();
+    
+    // 音声オシレーターの準備
+    initAudio();
+  });
+}
+
 function setup() {
   pixelDensity(1); 
   createCanvas(windowWidth, windowHeight);
-  videoElement = createCapture(VIDEO);
-  videoElement.size(width, height);
-  videoElement.hide();
+  // 初期レイアウト計算
+  updateLayout();
+  initPanels();
+}
 
+function initAudio() {
   hitSoundEnv = new p5.Envelope();
   hitSoundEnv.setADSR(0.001, 0.1, 0.2, 0.5); 
   hitSoundEnv.setRange(0.8, 0); 
   hitSoundOsc = new p5.Oscillator('triangle'); 
   hitSoundOsc.amp(hitSoundEnv);
-  hitSoundOsc.freq(800); 
+  hitSoundOsc.freq(800);
+  hitSoundOsc.start(); // 音を鳴らす準備（音量はエンベロープで制御）
+}
 
-  updateLayout();
-  initPanels();
+function initCameraAndHands() {
+  videoElement = createCapture(VIDEO);
+  videoElement.size(1280, 720); // 解像度指定
+  videoElement.hide();
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
-  hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+  hands.setOptions({
+    maxNumHands: 1, 
+    modelComplexity: 0, // ★軽量化: 0に設定（スマホ対策）
+    minDetectionConfidence: 0.5, 
+    minTrackingConfidence: 0.5
+  });
   hands.onResults(onResults);
 
   camera = new Camera(videoElement.elt, {
@@ -90,6 +125,8 @@ function setup() {
     width: 1280, height: 720
   });
   camera.start();
+  
+  isGameStarted = true;
 }
 
 function windowResized() {
@@ -105,9 +142,9 @@ function windowResized() {
 }
 
 function updateLayout() {
-  // バットの可動域設定
-  batRangeStart = width * 0.85; // 右側 (閉じたとき)
-  batRangeEnd = width * 0.55;   // 左側 (開いたとき)
+  // バット可動域：右(0.85) -> 左(0.55)
+  batRangeStart = width * 0.85; 
+  batRangeEnd = width * 0.55;   
   guidePositionX = width * 0.85;
   guidePositionY = height / 2 + 100;
 }
@@ -136,3 +173,305 @@ function initPanels() {
         y: panelStartY + r * (panelH + panelGap),
         w: panelW, h: panelH,
         centerX: panelStartX + c * (panelW + panelGap) + panelW/2,
+        centerY: panelStartY + r * (panelH + panelGap) + panelH/2,
+        num: num,
+        active: true
+      });
+    }
+  }
+}
+
+function onResults(results) {
+  // 手が見つかったらスタート画面を消す
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    document.getElementById('startScreen').style.display = 'none';
+    handDetected = true;
+    const lm = results.multiHandLandmarks[0];
+    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
+    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
+    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
+  } else {
+    handDetected = false;
+    thumbTip = null;
+    wrist = null;
+  }
+}
+
+function touchStarted() { handleInput(); return false; }
+function mousePressed() { handleInput(); }
+
+function handleInput() {
+  if (!isGameStarted) return; // スタート前は反応しない
+  if (gameState === 5 || gameState === 4) { resetGame(); return; }
+
+  if (handDetected && thumbTip && wrist) {
+    if (gameState === 1) { 
+        angleClosed = currentAngle; 
+        gameState = 2; 
+    } else if (gameState === 2) { 
+        angleOpen = currentAngle; 
+        fixedWristPosition = createVector(wrist.x, wrist.y);
+        gameState = 3; 
+    }
+  }
+}
+
+function resetGame() {
+  gameState = 1;
+  balls = [];
+  score = 0;
+  level = 1;
+  lives = maxLives;
+  fixedWristPosition = null;
+  initPanels();
+}
+
+function draw() {
+  background(0);
+  
+  // 背景
+  if (bgLoaded && bgImage) {
+    let imgAspect = bgImage.width / bgImage.height;
+    let canvasAspect = width / height;
+    let dw, dh, dx, dy;
+    if (canvasAspect > imgAspect) { dw=width; dh=width/imgAspect; dx=0; dy=(height-dh)/2; }
+    else { dh=height; dw=height*imgAspect; dy=0; dx=(width-dw)/2; }
+    image(bgImage, dx, dy, dw, dh);
+  }
+
+  if (!isGameStarted) return; // スタート前は描画ここまで
+
+  // カメラ映像
+  push();
+  translate(width, 0); scale(-1, 1); tint(255, 120);
+  image(videoElement, 0, 0, width, height);
+  pop();
+
+  drawPanels();
+  drawAlwaysGuide();
+
+  if (gameState === 3) {
+    checkHandStability();
+    if (gameState === 3) playGame();
+  } else if (gameState === 4) {
+    drawErrorScreen();
+  } else if (gameState === 5) {
+    drawGameOverScreen();
+  } else {
+    drawSetupUI();
+  }
+}
+
+function drawPanels() {
+  if (panels.every(p => !p.active)) {
+    showMessage("PERFECT! Next Level!", color(0, 255, 255));
+    if (frameCount % 60 === 0) initPanels(); 
+  }
+  for (let p of panels) {
+    if (p.active) {
+      fill(0, 255, 0, 150); stroke(255); strokeWeight(3);
+      rect(p.x, p.y, p.w, p.h, 5);
+      let txtSize = min(p.w, p.h) * 0.6;
+      fill(255); noStroke(); textSize(txtSize); textStyle(BOLD); textAlign(CENTER, CENTER);
+      text(p.num, p.x + p.w/2, p.y + p.h/2);
+    } else {
+      fill(50, 50); stroke(100); strokeWeight(1);
+      rect(p.x, p.y, p.w, p.h, 5);
+    }
+  }
+}
+
+function drawAlwaysGuide() {
+  noFill(); 
+  let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
+  let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
+  if (handDetected) {
+    stroke(0, 255, 0); if (gameState < 3) fill(0, 255, 0, 50);
+  } else {
+    stroke(255, 0, 0); noFill();
+  }
+  strokeWeight(4); ellipse(centerX, centerY, 100, 100);
+  strokeWeight(2); rectMode(CENTER); rect(centerX, centerY - 150, 300, 400, 20);
+}
+
+function checkHandStability() {
+  if (!wrist || !fixedWristPosition) return;
+  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > ALLOWED_MOVEMENT_RADIUS) {
+    gameState = 4;
+  }
+}
+
+function drawSetupUI() {
+  textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
+  let uiX = guidePositionX; 
+  let uiY = guidePositionY - 250;
+  // スタート直後はガイドを表示
+  if (handDetected) {
+    if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
+    else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 100, uiY);
+  }
+}
+
+function drawErrorScreen() {
+  fill(0, 150); rect(0, 0, width, height);
+  textAlign(CENTER, CENTER); textSize(40); fill(255, 50, 50); stroke(255); strokeWeight(5);
+  text("手が動きました！", width/2, height/2 - 50);
+  textSize(24); fill(255); noStroke();
+  text("手首の位置を固定してください。\n画面タップでリセット", width/2, height/2 + 50);
+}
+
+function drawGameOverScreen() {
+  fill(0, 200); rect(0, 0, width, height);
+  textAlign(CENTER, CENTER); 
+  fill(255, 50, 50); stroke(255); strokeWeight(5); textSize(60);
+  text("GAME OVER", width/2, height/2 - 50);
+  fill(255); noStroke(); textSize(30);
+  text(`Total Score: ${score}`, width/2, height/2 + 30);
+  textSize(24); text("画面タップでリトライ", width/2, height/2 + 100);
+}
+
+function playGame() {
+  let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
+  currentProgressPercent = Math.round(progress * 100);
+
+  // ★座標計算：閉じる(0)=右(Start), 開く(1)=左(End)
+  let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
+  let batY = map(progress, 0, 1, height - 100, height - 250);
+  
+  let isBatActive = (progress >= 0.3); // 30%以上開いたら有効
+  
+  let batBaseLen = 140;
+  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
+
+  push();
+  translate(batX, batY);
+  // 角度計算：右傾き(PI/4) -> 左傾き(-PI/4)
+  rotate(map(progress, 0, 1, PI/4, -PI/4));
+  
+  if (isBatActive) {
+    fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0);
+  } else {
+    fill(100, 150); noStroke();
+  }
+  rect(-15, 0, 30, batLen, 10);
+  
+  if (!isBatActive) {
+    fill(255); textSize(20); textAlign(CENTER); noStroke();
+    text("WAIT", 0, -20);
+  }
+  pop();
+
+  if (balls.length === 0 && frameCount % 60 === 0) {
+    balls.push(new Ball(level));
+  }
+
+  for (let i = balls.length - 1; i >= 0; i--) {
+    let b = balls[i];
+    b.update(); b.display();
+    
+    let hitThreshold = max(250 - (level - 1) * 20, 80);
+    if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < hitThreshold) {
+      playHitSound();
+      let hitOffset = dist(b.x, b.y, batX, batY); 
+      b.hit(progress, hitOffset); 
+    }
+
+    if (b.isHit) {
+      for (let p of panels) {
+        if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
+          p.active = false; score++; checkLevelUp();
+          showMessage("イイじゃん！👍️", color(255, 200, 0));
+          balls.splice(i, 1); break;
+        }
+      }
+    }
+
+    if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) {
+      if (!b.isHit) {
+        lives--; showMessage("MISS!", color(100, 100, 255));
+        if (lives <= 0) gameState = 5;
+      }
+      balls.splice(i, 1);
+    }
+  }
+  drawGameUI(progress);
+}
+
+function checkLevelUp() {
+  if (score > 0 && score % 10 === 0) {
+    level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0));
+  }
+}
+
+function playHitSound() {
+  if (hitSoundEnv && hitSoundOsc) {
+    hitSoundOsc.freq(800); hitSoundEnv.play();
+    setTimeout(() => { hitSoundOsc.freq(1200); }, 30);
+  }
+}
+
+function drawGameUI(progress) {
+  fill(255); stroke(0); strokeWeight(4);
+  textAlign(RIGHT, TOP); textSize(32); 
+  text(`打点: ${score}`, width - 20, 20); text(`Lv.${level}`, width - 20, 60);
+
+  textAlign(LEFT, TOP); fill(255, 50, 50);
+  let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
+  text(`Life: ${hearts}${empty}`, 20, 20);
+
+  let uiW = 220; let uiX = width - uiW - 20; let uiY = 100;
+  fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
+  fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
+  text("可動域ゲージ", uiX + uiW/2, uiY + 5);
+  textAlign(LEFT, TOP); textSize(12); text("閉", uiX + 10, uiY + 25);
+  textAlign(RIGHT, TOP); text("開", uiX + uiW - 10, uiY + 25);
+  let barX = uiX + 10; let barY = uiY + 45; let barW = 200;
+  stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 20);
+  noStroke(); fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
+  rect(barX, barY, map(progress, 0, 1, 0, barW), 20);
+
+  if (messageTimer > 0) {
+    textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
+    textSize(60); text(message, width/2, height/3); messageTimer--;
+  }
+}
+
+function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
+
+class Ball {
+  constructor(currentLevel) {
+    this.startX = 0; this.startY = height * 0.85; 
+    this.x = this.startX; this.y = this.startY;
+
+    let targetProgress = random(0.0, 1.0); 
+    // バット可動域(Start=右, End=左)全体をターゲットに
+    let targetX = map(targetProgress, 0, 1, batRangeStart, batRangeEnd);
+    let targetY = height * 0.75;
+    let dirX = targetX - this.startX; let dirY = targetY - this.startY;
+    let distLen = sqrt(dirX*dirX + dirY*dirY);
+    let baseSpeed = 10 + (currentLevel - 1) * 2; 
+    let speed = random(baseSpeed, baseSpeed + 3); 
+    this.vx = (dirX / distLen) * speed; this.vy = (dirY / distLen) * speed;
+    this.isHit = false; this.ballColor = color(255);
+  }
+  update() { this.x += this.vx; this.y += this.vy; if (this.isHit) this.vy += 0.2; }
+  display() { fill(this.ballColor); stroke(0); strokeWeight(1); ellipse(this.x, this.y, 30); }
+  hit(progress, offset) {
+    this.isHit = true; this.ballColor = color(255, 255, 0);
+    let areaW = 3 * panels[0].w + 30; 
+    let areaLeft = panelStartX; let areaRight = panelStartX + areaW;
+    // progress大(1,開,左) -> 左側(areaLeft), progress小(0,閉,右) -> 右側(areaRight)
+    let targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
+    let sweetSpotLimit = max(100 - (level-1)*10, 30);
+    let targetY = map(offset, 0, sweetSpotLimit * 2, areaTop, areaBottom);
+    let dx = targetX - this.x; let dy = targetY - this.y;
+    let distLen = sqrt(dx*dx + dy*dy);
+    let flySpeed = 40; 
+    this.vx = (dx / distLen) * flySpeed; this.vy = (dy / distLen) * flySpeed;
+  }
+}
+</script>
+</body>
+</html>
