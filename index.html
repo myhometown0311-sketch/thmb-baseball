@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball Pro - Swing Mode</title>
+  <title>Thumb Baseball Pro - Reverse Swing</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
@@ -53,9 +53,9 @@ function setup() {
   videoElement.size(width, height);
   videoElement.hide();
 
-  // バットの可動域（画面中央を中心に広めに取る）
-  batRangeMin = width * 0.3; // 左側（閉じた位置）
-  batRangeMax = width * 0.7; // 右側（開いた位置）
+  // バットの可動域設定
+  batRangeMin = width * 0.3; // 画面左側
+  batRangeMax = width * 0.7; // 画面右側
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
   hands.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
@@ -147,10 +147,10 @@ function drawAlwaysGuide() {
   let centerY = fixedWristPosition ? fixedWristPosition.y : height/2 + 100;
 
   if (handDetected) {
-    stroke(0, 255, 0); // OKサイン(緑)
+    stroke(0, 255, 0); // OK(緑)
     if (gameState < 3) fill(0, 255, 0, 50);
   } else {
-    stroke(255, 0, 0); // NGサイン(赤)
+    stroke(255, 0, 0); // NG(赤)
     noFill();
   }
   strokeWeight(4); ellipse(centerX, centerY, 100, 100);
@@ -183,35 +183,33 @@ function playGame() {
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
   currentProgressPercent = Math.round(progress * 100);
 
-  // バットの位置
-  let batX = map(progress, 0, 1, batRangeMin, batRangeMax);
+  // ★変更点：バットの動きを逆にする（MinとMaxを入れ替えた）
+  // 閉じる(0) → Max(右側) ／ 開く(1) → Min(左側)
+  let batX = map(progress, 0, 1, batRangeMax, batRangeMin);
   let batY = map(progress, 0, 1, height - 100, height - 250);
 
-  // ★変更点：親指が閉じている(15%未満)ときはバットを半透明＆判定なしにする
   let isBatActive = (progress >= 0.15);
 
   push();
   translate(batX, batY);
-  rotate(map(progress, 0, 1, -PI/6, PI/6));
+  // ★変更点：角度の動きも逆にする
+  rotate(map(progress, 0, 1, PI/6, -PI/6));
   
-  // 閉じてるときはグレーで半透明、開くと色が付く
   if (isBatActive) {
     fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
     stroke(0);
   } else {
-    fill(100, 150); // 半透明グレー（待機状態）
+    fill(100, 150);
     noStroke();
   }
   rect(-15, 0, 30, 140, 10);
   
-  // 待機中は「Wait」などの文字を出しても分かりやすいかも
   if (!isBatActive) {
     fill(255); noStroke(); textSize(16); textAlign(CENTER);
     text("待機", 0, -20);
   }
   pop();
 
-  // ボール生成
   if (balls.length === 0 && frameCount % 60 === 0) {
     balls.push(new Ball());
   }
@@ -220,10 +218,10 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // 当たり判定（バットがアクティブな時だけ！）
+    // 当たり判定
     if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < 70) {
       let pct = progress * 100;
-      if (pct <= 20) { b.hit("foul"); showMessage("Foul", color(200)); combo=0; } // 振り遅れ
+      if (pct <= 20) { b.hit("foul"); showMessage("Foul", color(200)); combo=0; }
       else if (pct <= 85) { b.hit("hit"); score++; combo++; }
       else { b.hit("homerun"); score+=5; combo++; showMessage("Home Run!", color(255,50,50)); }
     }
@@ -255,10 +253,11 @@ class Ball {
     this.x = this.startX;
     this.y = this.startY;
 
-    // ★変更点：ボールは「少し開いた位置(20%)」〜「全開(100%)」の間にしか落ちない
-    // つまり「閉じたまま(0〜15%)」の場所には飛んでこない＝待機してれば当たらない
+    // ★変更点：ボールのターゲット位置も逆の動きに合わせて計算
+    // 親指を開いた位置（左側）周辺にボールが落ちるようにする
     let targetProgress = random(0.2, 1.0); 
-    let targetX = map(targetProgress, 0, 1, batRangeMin, batRangeMax);
+    // ここで Max -> Min の順にMapすることで、開いたときの位置にボールを飛ばす
+    let targetX = map(targetProgress, 0, 1, batRangeMax, batRangeMin);
     let targetY = height * 0.75;
 
     let dirX = targetX - this.startX;
@@ -294,5 +293,4 @@ class Ball {
 </script>
 </body>
 </html>
-
 
