@@ -132,14 +132,10 @@ function drawCalibrationUI() {
     stroke(0, 150, 255); strokeWeight(5); line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
     noStroke(); text("【STEP 2】\n親指を全開にして(青線)タップ", width/2, height/2);
   }
-}
-
-
 function playGame() {
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
   let batX = map(progress, 0, 1, width/2 - 150, width/2 + 150);
   let batY = map(progress, 0, 1, height - 100, height - 250);
-
 
   // バット描画
   push();
@@ -149,48 +145,75 @@ function playGame() {
   rect(-10, 0, 20, 120);
   pop();
 
-
   if (frameCount % 60 === 0) balls.push(new Ball());
-
 
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i];
-    b.update(); b.display();
+    b.update();
+    b.display();
+    
     if (!b.isHit && dist(b.x, b.y, batX, batY) < 60) {
       let pct = progress * 100;
-      if (pct <= 10) { b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; }
-      else if (pct <= 80) { b.hit("hit"); score++; combo++; if(score%10===0) showMessage("イイじゃん👍", color(255,255,0)); }
-      else { b.hit("homerun"); score+=5; combo++; showMessage(combo>=50?"最高にイイじゃん👍":"ホームラン！", color(255,50,50)); }
-    class Ball {   //   constructor() {
-        // 画面全体ではなく、親指がいる周辺（左右100px以内）から落とす
-        this.x = random(targetX - 100, targetX + 100); 
-        this.y = -50;
-        this.vx = random(-2, 2);
-    this.vy = random(5, 8);
-    this.isHit = false;
+      if (pct <= 10) { 
+        b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; 
+      } else if (pct <= 80) { 
+        b.hit("hit"); score++; combo++; 
+        if(score % 10 === 0) showMessage("イイじゃん👍", color(255,255,0)); 
+      } else { 
+        b.hit("homerun"); score += 5; combo++; 
+        showMessage(combo >= 50 ? "最高にイイじゃん👍" : "ホームラン！", color(255,50,50)); 
+      }
+    }
+    // 画面外に出たボールを消す処理（これがないと重くなります）
+    if (b.y > height + 100) balls.splice(i, 1);
   }
-  
+
+  // スコア表示
   fill(255); textSize(32); textAlign(LEFT, TOP);
   text(`Score: ${score}\nCombo: ${combo}`, 20, 20);
+
+  // メッセージ表示
   if (messageTimer > 0) {
     textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
     textSize(60); text(message, width/2, height/3); messageTimer--;
   }
 }
+
+// メッセージを表示する関数
 function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
-function mousePressed(){console.log("tap ok");}
+
+// ボールの設計図（クラス）
+class Ball {
+  constructor() {
+    // 親指(targetX)の周辺から落ちるように設定
+    this.x = random(targetX - 100, targetX + 100); 
+    this.y = -50;
+    this.vx = random(-2, 2);
+    this.vy = random(5, 8);
+    this.isHit = false;
+  }
+
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    if (this.isHit) this.vy += 0.8; // 打った後は重力をかける
+  }
+
+  display() {
+    fill(255);
+    ellipse(this.x, this.y, 40);
+  }
+
+  hit(type) {
+    this.isHit = true;
+    if (type === "foul") { this.vy = 2; }
+    else if (type === "hit") { this.vy = -15; this.vx *= 2; }
+    else { this.vy = -35; this.vx *= 0.5; }
+  }
+}
+
+function mousePressed(){ console.log("tap ok"); }
+
 </script> 
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
