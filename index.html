@@ -161,7 +161,7 @@ function playGame() {
       if (pct <= 10) { b.hit("foul"); showMessage("ファール...", color(200)); combo = 0; }
       else if (pct <= 80) { b.hit("hit"); score++; combo++; if(score%10===0) showMessage("イイじゃん👍", color(255,255,0)); }
       else { b.hit("homerun"); score+=5; combo++; showMessage(combo>=50?"最高にイイじゃん👍":"ホームラン！", color(255,50,50)); }
-    class Ball {      constructor() {
+    class Ball {   //   constructor() {
         // 画面全体ではなく、親指がいる周辺（左右100px以内）から落とす
         this.x = random(targetX - 100, targetX + 100); 
         this.y = -50;
@@ -182,6 +182,7 @@ function mousePressed(){console.log("tap ok");}
 </script> 
 </body>
 </html>
+
 
 
 
