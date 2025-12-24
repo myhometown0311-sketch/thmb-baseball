@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Final Ball Trajectory</title>
+  <title>Thumb Baseball - Pitching Fix</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
@@ -379,26 +379,38 @@ function drawAlwaysGuide() {
   noFill(); 
   let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
   let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
+  
   if (handDetected) {
-    stroke(0, 255, 0); if (gameState < 3) fill(0, 255, 0, 50);
+    stroke(0, 255, 0); 
+    if (gameState < 3) fill(0, 255, 0, 50);
   } else {
     stroke(255, 0, 0); noFill();
   }
-  strokeWeight(4); ellipse(centerX, centerY, 120, 120); 
+  
+  strokeWeight(4); 
+  ellipse(centerX, centerY, 120, 120); 
   strokeWeight(2); rect(centerX, centerY - 150, 350, 450, 20);
 }
 
 function checkHandStability() {
   if (!wrist || !fixedWristPosition) return;
-  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > ALLOWED_MOVEMENT_RADIUS) gameState = 4;
+  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > ALLOWED_MOVEMENT_RADIUS) {
+    gameState = 4;
+  }
 }
 
 function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
-  let uiX = guidePositionX; let uiY = guidePositionY - 280;
+  let uiX = guidePositionX; 
+  let uiY = guidePositionY - 280;
+  
   let textOffset = isRightHand ? -150 : 150;
 
-  if (!handDetected) { text("カメラに手を映してください", width/2, height/2); return; }
+  if (!handDetected) {
+    text("カメラに手を映してください", width/2, height/2);
+    return;
+  }
+
   if (gameState === 1) text("【可動域測定 1/2】\n手首を丸に合わせて\n親指を閉じてタップ", uiX + textOffset, uiY);
   else if (gameState === 2) text("【可動域測定 2/2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX + textOffset, uiY);
 }
@@ -427,51 +439,73 @@ function playGame() {
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
+  
   let isBatActive = (progress >= 0.25); 
   let batBaseLen = 140;
   let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
-  if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
-  else rotate(map(progress, 0, 1, -PI/4, PI/4));
   
-  if (isBatActive) { fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0); }
-  else { fill(100, 150); noStroke(); }
+  if (isRightHand) {
+    rotate(map(progress, 0, 1, PI/4, -PI/4));
+  } else {
+    rotate(map(progress, 0, 1, -PI/4, PI/4));
+  }
+  
+  if (isBatActive) {
+    fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0);
+  } else {
+    fill(100, 150); noStroke();
+  }
   rect(-15, 0, 30, batLen, 10);
-  if (!isBatActive) { fill(255); textSize(20); textAlign(CENTER); noStroke(); text("WAIT", 0, -20); }
+  if (!isBatActive) {
+    fill(255); textSize(20); textAlign(CENTER); noStroke();
+    text("WAIT", 0, -20);
+  }
   pop();
 
-  if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball(level));
+  if (balls.length === 0 && frameCount % 60 === 0) {
+    balls.push(new Ball(level));
+  }
 
   for (let i = balls.length - 1; i >= 0; i--) {
-    let b = balls[i]; b.update(); b.display();
+    let b = balls[i];
+    b.update(); b.display();
     
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
     let inZone = (distToGuide < 100); 
+
     let hitThreshold = 300; 
     
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
-      playHitSound(); b.hit(progress); 
+      playHitSound();
+      b.hit(progress); 
     }
 
     if (b.isHit) {
       for (let p of panels) {
         if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
-          p.active = false; score++; combo++;
-          if (combo > 40) showMessage("カッコイイ❗️", color(255, 50, 50));
-          else if (combo > 30) showMessage("最高かよっ❗️👍️", color(255, 0, 255));
+          p.active = false; score++; 
+          
+          combo++;
+          if (combo > 40) showMessage("最高かよっ❗️", color(255, 50, 50));
+          else if (combo > 30) showMessage("大谷翔平かよ❗️👍️", color(255, 0, 255));
           else if (combo > 20) showMessage("最高にイイじゃん！👍️", color(255, 100, 0));
           else if (combo > 10) showMessage("めっちゃイイじゃん❗️👍️", color(255, 255, 0));
           else showMessage("イイじゃん！👍️", color(255, 255, 0));
-          checkLevelUp(); balls.splice(i, 1); break;
+
+          checkLevelUp();
+          balls.splice(i, 1); break;
         }
       }
     }
 
     if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) {
       if (!b.isHit) {
-        lives--; combo = 0; showMessage("MISS!", color(100, 100, 255));
+        lives--; 
+        combo = 0; 
+        showMessage("MISS!", color(100, 100, 255));
         if (lives <= 0) gameState = 5;
       }
       balls.splice(i, 1);
@@ -481,12 +515,15 @@ function playGame() {
 }
 
 function checkLevelUp() {
-  if (score > 0 && score % 10 === 0) { level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0)); }
+  if (score > 0 && score % 10 === 0) {
+    level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0));
+  }
 }
 
 function playHitSound() {
   if (hitSoundEnv && hitSoundOsc) {
-    hitSoundOsc.freq(800); hitSoundEnv.play(); setTimeout(() => { hitSoundOsc.freq(1200); }, 30);
+    hitSoundOsc.freq(800); hitSoundEnv.play();
+    setTimeout(() => { hitSoundOsc.freq(1200); }, 30);
   }
 }
 
@@ -495,17 +532,26 @@ function drawGameUI(progress) {
   textAlign(RIGHT, TOP); textSize(32); 
   text(`打点: ${score}`, width - 20, 20); text(`Lv.${level}`, width - 20, 60);
 
-  if (combo > 1) { fill(255, 200, 0); textSize(40); text(`${combo} COMBO!`, width - 20, 110); }
+  if (combo > 1) {
+    fill(255, 200, 0); textSize(40);
+    text(`${combo} COMBO!`, width - 20, 110);
+  }
 
   textAlign(LEFT, TOP); fill(255, 50, 50); textSize(32);
   let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
   text(`Life: ${hearts}${empty}`, 20, 20);
 
-  let uiW = 220; let uiX = width / 2 - uiW / 2; let uiY = 10; 
+  let uiW = 220; 
+  let uiX = width / 2 - uiW / 2; 
+  let uiY = 10; 
+  
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
+  
   fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
   text("現在の可動域", uiX + uiW/2, uiY + 5);
-  textSize(30); textStyle(BOLD); text(currentCm.toFixed(1) + " cm", uiX + uiW/2, uiY + 30);
+  
+  textSize(30); textStyle(BOLD);
+  text(currentCm.toFixed(1) + " cm", uiX + uiW/2, uiY + 30);
 
   let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
   stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
@@ -522,24 +568,21 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
-    // ★重要: ボールの発射位置を「パネルエリアの中心」にする
-    // パネル幅3列分の中央
-    let pAreaW = 3 * panels[0].w + 30; // パネル幅+隙間
-    let pAreaH = 3 * panels[0].h + 30;
+    // 修正：左右モードに合わせて出現位置を変える
+    // 右手モード(Left Panels) -> 左からボールが出る (width * 0.1)
+    // 左手モード(Right Panels) -> 右からボールが出る (width * 0.9)
+    this.startX = isRightHand ? width * 0.1 : width * 0.9;
     
-    // パネルエリアの左上座標 (panelStartX, panelStartY)
-    // そこから中心を計算
-    let pCenterX = panelStartX + pAreaW / 2;
-    let pCenterY = panelStartY + pAreaH / 2;
-
-    this.startX = pCenterX; 
-    this.startY = pCenterY; 
+    // 高さは画面中段よりやや下
+    this.startY = height * 0.6; 
     
-    this.x = this.startX; this.y = this.startY; 
+    this.x = this.startX; 
+    this.y = this.startY; 
 
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
 
+    // 丸ガイドに向かって飛ぶ
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
@@ -553,20 +596,33 @@ class Ball {
   }
   update() { this.x += this.vx; this.y += this.vy; if (this.isHit) this.vy += 0.2; }
   display() { fill(this.ballColor); stroke(0); strokeWeight(1); ellipse(this.x, this.y, 30); }
+  
   hit(progress) {
     this.isHit = true; this.ballColor = color(255, 255, 0);
+    
     let areaW = 3 * panels[0].w + 30; 
     let areaLeft, areaRight;
-    if (isRightHand) { areaLeft = panelStartX; areaRight = panelStartX + areaW; } 
-    else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
+
+    if (isRightHand) {
+      areaLeft = panelStartX; 
+      areaRight = panelStartX + areaW;
+    } else {
+      areaLeft = panelStartX;
+      areaRight = panelStartX + areaW;
+    }
     
     let targetX;
-    if (isRightHand) targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
-    else targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
+    if (isRightHand) {
+        targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    } else {
+        targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
+    }
+
+    let areaTop = panels[0].y; 
+    let areaBottom = panels[8].y + panels[8].h;
     
-    let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
     let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
-    
+
     let dx = targetX - this.x; let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
     let flySpeed = 30; 
