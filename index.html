@@ -3,27 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Force Start</title>
+  <title>Thumb Baseball - Ultimate Fix</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; }
     
+    /* スタート画面のオーバーレイ */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.9);
       display: flex; flex-direction: column; justify-content: center; align-items: center;
-      z-index: 20; color: white; text-align: center;
+      z-index: 100; color: white; text-align: center;
     }
     
+    /* スタートボタン */
     #startBtn {
-      margin-top: 20px; padding: 20px 60px; font-size: 24px; font-weight: bold;
+      margin-top: 30px; padding: 20px 60px; font-size: 24px; font-weight: bold;
       color: black; background: #ffff00; border: 4px solid #fff; border-radius: 50px; cursor: pointer;
-      box-shadow: 0 0 15px rgba(255, 255, 0, 0.5);
-      -webkit-tap-highlight-color: transparent; /* スマホでのタップ強調を消す */
+      box-shadow: 0 0 20px rgba(255, 255, 0, 0.6);
+      -webkit-tap-highlight-color: transparent; /* タップ時のハイライトを消す */
     }
+    #startBtn:active { transform: scale(0.95); background: #cccc00; }
     
+    /* ログ表示エリア */
     #statusLog {
-      margin-top: 30px; font-size: 14px; color: #00ff00; 
+      margin-top: 30px; font-size: 14px; color: #00ff00; font-family: monospace;
       background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px;
       max-width: 90%; word-wrap: break-word;
     }
@@ -37,17 +41,19 @@
 <body>
 
   <div id="overlay">
-    <h1 style="color:white; margin-bottom:10px;">Thumb Baseball</h1>
-    <p style="color:#ddd; font-size:14px;">スマホを「横画面」にして<br>ボタンを押してください</p>
+    <h1 style="color:white; margin:0;">Thumb Baseball</h1>
+    <p style="color:#bbb; font-size:14px; margin-top:10px;">スマホを「横画面」にして<br>下のボタンを押してください</p>
     
-    <button id="startBtn">ゲームスタート</button>
+    <button id="startBtn" onclick="forceStart()">ゲームスタート</button>
     
-    <div id="statusLog">準備完了。ボタンをタップしてください。</div>
+    <div id="statusLog">待機中...ボタンを押してください</div>
   </div>
 
 <script>
 // --- グローバル変数 ---
-let videoElement, hands, camera;
+let videoElement = null;
+let hands = null;
+let camera = null;
 let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
 let isGameStarted = false;
@@ -66,59 +72,59 @@ let maxLives = 3;
 let lives = maxLives;
 
 let message = "", messageTimer = 0, messageColor;
-let bgImage = null; 
+let bgImage = null;
 let hitSoundOsc, hitSoundEnv; 
 
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
 
+// 画面へのログ出力
 function log(msg) {
   const el = document.getElementById('statusLog');
-  if(el) el.innerText = msg;
+  if(el) {
+    el.innerText = msg;
+  }
   console.log(msg);
 }
 
+// --- P5.js 初期化 ---
+// preloadは使わずsetupで非同期ロードすることでブロックを防ぐ
 function setup() {
-  pixelDensity(1); 
-  createCanvas(windowWidth, windowHeight);
+  pixelDensity(1); // スマホ負荷軽減
   
-  // ボタンにイベントリスナーを設定（onclick属性より確実）
-  const btn = document.getElementById('startBtn');
-  btn.addEventListener('click', startGame);
-  btn.addEventListener('touchstart', startGame); // スマホ用タッチイベント
-
-  // 画像読み込み（非同期）
+  let cnv = createCanvas(windowWidth, windowHeight);
+  cnv.style('z-index', '-1'); // キャンバスを一番後ろへ
+  
+  // 背景画像の読み込み（失敗しても止まらない）
   loadImage('stadium_bg.png', 
-    (img) => { bgImage = img; },
-    () => { console.log("背景画像なし"); }
+    (img) => { bgImage = img; log("画像ロード完了。待機中。"); },
+    () => { log("画像なし(黒背景)。待機中。"); }
   );
 
   updateLayout();
   initPanels();
 }
 
-// --- スタート処理 ---
-function startGame(e) {
-  // イベントの重複発火防止
-  if(e) e.preventDefault();
+// --- スタートボタンのアクション ---
+function forceStart() {
   const btn = document.getElementById('startBtn');
-  if(btn.style.display === 'none') return;
-  
-  btn.style.display = 'none';
-  log("起動処理を開始します...");
+  btn.style.display = 'none'; // 連打防止
+  log("起動シーケンス開始...");
 
-  // 1. オーディオ初期化（エラーが出ても無視して進む）
+  // 1. オーディオの強制再開 (Promiseを待たずに次へ進む)
   try {
-    userStartAudio();
+    getAudioContext().resume();
     initAudio();
     log("音声初期化試行...");
-  } catch(err) {
-    log("音声エラー(無視): " + err);
+  } catch(e) {
+    log("音声エラー(無視): " + e);
   }
 
-  // 2. カメラとAIを即座に起動（音声を待たない）
-  setTimeout(initCameraAndHands, 100); 
+  // 2. カメラの起動 (少し遅らせてDOM更新を反映させる)
+  setTimeout(() => {
+    initCameraAndHands();
+  }, 100);
 }
 
 function initAudio() {
@@ -132,10 +138,10 @@ function initAudio() {
 }
 
 function initCameraAndHands() {
-  log("カメラへのアクセスを要求中...");
-  
+  log("カメラ権限を確認中...");
+
   let constraints = {
-    audio: false, // 音声取得はオフにする（許可ブロック防止）
+    audio: false,
     video: {
       facingMode: "user",
       width: { ideal: 640 },
@@ -143,34 +149,46 @@ function initCameraAndHands() {
     }
   };
 
+  // p5.jsのcreateCaptureを使用
   videoElement = createCapture(constraints, function(stream) {
-    log("カメラ接続成功！AIを読み込みます...");
+    log("カメラ取得成功！AIを準備中...");
   });
-  
-  if(!videoElement) {
-    log("カメラが見つかりません。権限を確認してください。");
+
+  if (!videoElement) {
+    alert("カメラの起動に失敗しました。ブラウザの権限を確認してください。");
     return;
   }
 
   videoElement.size(width, height);
   videoElement.hide();
   
-  // iOS/Androidでの再生対策
+  // スマホ(iOS)向けの重要設定
   videoElement.elt.setAttribute('playsinline', '');
   videoElement.elt.setAttribute('autoplay', '');
   videoElement.elt.setAttribute('muted', '');
 
-  // MediaPipe Hands
+  // MediaPipe Handsの読み込みチェック
+  if (typeof Hands === 'undefined') {
+    alert("AIライブラリの読み込みに失敗しました。インターネット接続を確認してください。");
+    return;
+  }
+
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
   
   hands.setOptions({
     maxNumHands: 1, 
-    modelComplexity: 0, // 0=Lite (最軽量)
+    modelComplexity: 0, // 最軽量設定
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5
   });
   
   hands.onResults(onResults);
+
+  // Camera Utilsを使ってフレームを送る
+  if (typeof Camera === 'undefined') {
+    alert("カメラユーティリティの読み込み失敗");
+    return;
+  }
 
   camera = new Camera(videoElement.elt, {
     onFrame: async () => { await hands.send({image: videoElement.elt}); },
@@ -183,19 +201,76 @@ function initCameraAndHands() {
       isGameStarted = true; 
     })
     .catch(err => { 
-      log("起動エラー: " + err); 
+      log("カメラ起動エラー: " + err); 
+      alert("カメラエラー: " + err);
     });
+}
+
+function onResults(results) {
+  // 手が検出されたらオーバーレイを完全に消す
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const overlay = document.getElementById('overlay');
+    if (overlay && overlay.style.display !== 'none') {
+      overlay.style.display = 'none';
+    }
+    
+    handDetected = true;
+    const lm = results.multiHandLandmarks[0];
+    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
+    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
+    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
+  } else {
+    handDetected = false;
+    thumbTip = null;
+    wrist = null;
+  }
+}
+
+// --- 入力処理 ---
+function touchStarted() { handleInput(); return false; } // スクロール防止
+function mousePressed() { handleInput(); }
+
+function handleInput() {
+  if (!isGameStarted) return;
+  
+  // オーディオコンテキストが停止していたら再開を試みる
+  if (getAudioContext().state !== 'running') {
+    getAudioContext().resume();
+  }
+
+  if (gameState === 5 || gameState === 4) { resetGame(); return; }
+
+  if (handDetected && thumbTip && wrist) {
+    if (gameState === 1) { 
+        angleClosed = currentAngle; 
+        gameState = 2; 
+    } else if (gameState === 2) { 
+        angleOpen = currentAngle; 
+        fixedWristPosition = createVector(wrist.x, wrist.y);
+        gameState = 3; 
+    }
+  }
+}
+
+function resetGame() {
+  gameState = 1;
+  balls = [];
+  score = 0;
+  level = 1;
+  lives = maxLives;
+  fixedWristPosition = null;
+  initPanels();
 }
 
 function windowResized() {
   resizeCanvas(windowWidth, windowHeight);
   updateLayout();
+  // パネル位置再計算
   let oldPanels = panels;
   initPanels();
   if (oldPanels.length === panels.length) {
-    for(let i=0; i<panels.length; i++) {
-      panels[i].active = oldPanels[i].active;
-    }
+    for(let i=0; i<panels.length; i++) panels[i].active = oldPanels[i].active;
   }
 }
 
@@ -236,59 +311,9 @@ function initPanels() {
   }
 }
 
-function onResults(results) {
-  // 手が見つかったらオーバーレイを消す
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    const overlay = document.getElementById('overlay');
-    if (overlay.style.display !== 'none') {
-      overlay.style.display = 'none'; 
-      log("ゲーム開始！");
-    }
-    
-    handDetected = true;
-    const lm = results.multiHandLandmarks[0];
-    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
-    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
-    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
-    currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
-  } else {
-    handDetected = false;
-    thumbTip = null;
-    wrist = null;
-  }
-}
-
-function touchStarted() { handleInput(); return false; }
-function mousePressed() { handleInput(); }
-
-function handleInput() {
-  if (!isGameStarted) return;
-  if (gameState === 5 || gameState === 4) { resetGame(); return; }
-
-  if (handDetected && thumbTip && wrist) {
-    if (gameState === 1) { 
-        angleClosed = currentAngle; 
-        gameState = 2; 
-    } else if (gameState === 2) { 
-        angleOpen = currentAngle; 
-        fixedWristPosition = createVector(wrist.x, wrist.y);
-        gameState = 3; 
-    }
-  }
-}
-
-function resetGame() {
-  gameState = 1;
-  balls = [];
-  score = 0;
-  level = 1;
-  lives = maxLives;
-  fixedWristPosition = null;
-  initPanels();
-}
-
+// --- 描画ループ ---
 function draw() {
-  background(0); 
+  background(0);
 
   if (bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
@@ -301,6 +326,7 @@ function draw() {
 
   if (!isGameStarted) return;
 
+  // カメラ映像
   if (videoElement) {
     push();
     translate(width, 0); scale(-1, 1); tint(255, 120);
@@ -313,7 +339,7 @@ function draw() {
 
   if (gameState === 3) {
     checkHandStability();
-    if (gameState === 3) playGame();
+    playGame();
   } else if (gameState === 4) {
     drawErrorScreen();
   } else if (gameState === 5) {
@@ -366,7 +392,7 @@ function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 250;
-  if (!handDetected) return;
+  if (!handDetected) return; // スタート画面の裏なので描画しない
 
   if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
   else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 100, uiY);
@@ -397,7 +423,6 @@ function playGame() {
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
-  // スマホ感度対策
   let isBatActive = (progress >= 0.3); 
   
   let batBaseLen = 140;
@@ -501,7 +526,6 @@ class Ball {
   constructor(currentLevel) {
     this.startX = 0; this.startY = height * 0.85; 
     this.x = this.startX; this.y = this.startY;
-
     let targetProgress = random(0.0, 1.0); 
     let targetX = map(targetProgress, 0, 1, batRangeStart, batRangeEnd);
     let targetY = height * 0.75;
