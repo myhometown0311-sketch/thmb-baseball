@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Final Tuning</title>
+  <title>Thumb Baseball - Universal</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
     
+    /* スタート画面オーバーレイ */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -15,21 +16,26 @@
       z-index: 100; color: white; text-align: center;
     }
     
-    #startBtn {
-      margin-top: 20px; padding: 20px 50px; font-size: 22px; font-weight: bold;
+    .btn-container {
+      display: flex; gap: 20px; margin-top: 30px;
+    }
+
+    .hand-btn {
+      padding: 20px 40px; font-size: 20px; font-weight: bold;
       color: #000; background: #ffff00; border: 4px solid #fff; border-radius: 50px; cursor: pointer;
       box-shadow: 0 0 20px rgba(255, 255, 0, 0.5);
       -webkit-tap-highlight-color: transparent;
     }
-    #startBtn:active { transform: scale(0.95); background: #cccc00; }
+    .hand-btn:active { transform: scale(0.95); background: #cccc00; }
 
     #debugLog {
       position: fixed; top: 0; left: 0; width: 100%; 
       background: rgba(0,0,0,0.5); color: #00ff00; 
-      font-size: 12px; font-family: monospace; padding: 5px; 
+      font-size: 10px; font-family: monospace; padding: 2px; 
       z-index: 999; pointer-events: none;
     }
     
+    /* 生ビデオは非表示（p5で描画するため） */
     #rawVideo { display: none; }
   </style>
   
@@ -44,9 +50,23 @@
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
 
   <div id="overlay">
-    <h1 style="margin:0;">Thumb Baseball</h1>
-    <p>スマホを「横画面」にして<br>ボタンを押してください</p>
-    <button id="startBtn">可動域測定へ</button>
+    <h1 style="margin:0; font-size:24px;">Thumb Baseball</h1>
+    <p style="font-size:14px; color:#ccc;">スマホを「横画面」にしてください</p>
+    
+    <div id="instruction" style="margin: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px; text-align: left; font-size: 12px; max-width: 80%;">
+      <strong>【遊び方・手順】</strong><br>
+      1. 下のボタンで「プレイする手」を選びます。<br>
+      2. カメラの許可を求められたら「許可」してください。<br>
+      3. 丸いガイドに手首を合わせます。<br>
+      4. <strong>【可動域測定】</strong>を行います（指示に従い、閉じる→開く）。<br>
+      5. ゲーム開始！丸いガイドの中で親指を素早く開いてバットを振ります。<br>
+      6. タイミングよくパネルを狙い撃ちましょう！
+    </div>
+
+    <div class="btn-container">
+      <button class="hand-btn" onclick="selectHand('right')">右手でプレイ</button>
+      <button class="hand-btn" onclick="selectHand('left')">左手でプレイ</button>
+    </div>
   </div>
 
 <script>
@@ -57,6 +77,7 @@ let camera = null;
 let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
 let isGameStarted = false;
+let isRightHand = true; // true:右手, false:左手
 
 let gameState = 1; 
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
@@ -71,6 +92,8 @@ let level = 1;
 let maxLives = 3;
 let lives = maxLives;
 let combo = 0;
+
+let currentCm = 0;
 
 let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
@@ -96,43 +119,58 @@ function setup() {
     (img) => { bgImage = img; log("画像OK"); },
     () => { log("画像なし(黒背景)"); }
   );
-
+  
+  // 初期レイアウト（右手仮定）
   updateLayout();
   initPanels();
-  
-  const btn = document.getElementById('startBtn');
-  btn.addEventListener('click', startGameSequence);
-  btn.addEventListener('touchend', startGameSequence);
 }
 
-async function startGameSequence(e) {
-  e.preventDefault();
-  document.getElementById('startBtn').style.display = 'none';
-  log("起動中...");
+// --- 手の選択とスタート ---
+async function selectHand(hand) {
+  isRightHand = (hand === 'right');
+  
+  // ボタンを消す
+  document.getElementById('overlay').style.display = 'none'; // 一旦消さずにロード中にするか、あるいは消してロード表示
+  document.querySelector('.btn-container').style.display = 'none';
+  document.getElementById('instruction').innerHTML = "起動中...<br>カメラの許可を出してください";
+  
+  log(isRightHand ? "右手モード起動..." : "左手モード起動...");
 
   try {
     await userStartAudio();
     initAudio();
   } catch(err) { console.log(err); }
 
+  // レイアウト再計算
+  updateLayout();
+  initPanels();
+
   startNativeCamera();
 }
 
+// --- Android/iOS共通 カメラ起動 ---
 function startNativeCamera() {
   const constraints = {
     audio: false,
-    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+    video: { 
+      facingMode: "user", 
+      width: { ideal: 640 }, 
+      height: { ideal: 480 } 
+    }
   };
 
   navigator.mediaDevices.getUserMedia(constraints)
     .then(stream => {
       rawVideo.srcObject = stream;
-      rawVideo.play().then(() => {
+      // Androidでの再生互換性のため
+      rawVideo.onloadedmetadata = () => {
+        rawVideo.play();
         initMediaPipe();
-      });
+      };
     })
     .catch(err => {
-      alert("カメラ起動エラー: " + err.message);
+      alert("カメラ起動エラー: " + err.message + "\nブラウザの設定を確認してください。");
+      log("Camera Error: " + err.message);
     });
 }
 
@@ -142,7 +180,7 @@ function initMediaPipe() {
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
   hands.setOptions({
     maxNumHands: 1, 
-    modelComplexity: 0, 
+    modelComplexity: 0, // 軽量モード
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5
   });
@@ -150,7 +188,9 @@ function initMediaPipe() {
 
   camera = new Camera(rawVideo, {
     onFrame: async () => { 
-      if(rawVideo.videoWidth > 0) await hands.send({image: rawVideo}); 
+      if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
+        await hands.send({image: rawVideo}); 
+      }
     },
     width: 640, height: 480
   });
@@ -158,7 +198,7 @@ function initMediaPipe() {
   camera.start().then(() => {
     document.getElementById('overlay').style.display = 'none';
     isGameStarted = true;
-    log("プレイ開始！");
+    log("Game Started!");
   });
 }
 
@@ -176,9 +216,13 @@ function onResults(results) {
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
+    
+    // 座標取得 (左右反転処理は描画時にscale(-1,1)で行うため、ここではそのまま取得)
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    
+    // 角度計算
     currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
   } else {
     handDetected = false;
@@ -187,6 +231,7 @@ function onResults(results) {
   }
 }
 
+// --- 入力ハンドラ ---
 function handleInput() {
   if (!isGameStarted) return;
   if (getAudioContext().state !== 'running') getAudioContext().resume();
@@ -228,10 +273,19 @@ function windowResized() {
   }
 }
 
+// --- レイアウト調整 (左右対応) ---
 function updateLayout() {
-  batRangeStart = width * 0.85; 
-  batRangeEnd = width * 0.55;   
-  guidePositionX = width * 0.85;
+  if (isRightHand) {
+    // 右手モード: ガイド右、パネル左
+    batRangeStart = width * 0.85; 
+    batRangeEnd = width * 0.55;   
+    guidePositionX = width * 0.85;
+  } else {
+    // 左手モード: ガイド左、パネル右
+    batRangeStart = width * 0.15; 
+    batRangeEnd = width * 0.45;   
+    guidePositionX = width * 0.15;
+  }
   guidePositionY = height / 2 + 100;
 }
 
@@ -247,7 +301,16 @@ function initPanels() {
   let panelGap = 15 + (1 - shrinkRate) * 20;
 
   let levelLift = (level - 1) * (height * 0.05);
-  panelStartX = width * 0.02; 
+  
+  // パネル開始位置（左右で反転）
+  if (isRightHand) {
+    panelStartX = width * 0.02; // 左側
+  } else {
+    // 右側配置: 全幅 - (パネル全幅 + マージン)
+    let totalPanelW = cols * panelW + (cols - 1) * panelGap;
+    panelStartX = width - totalPanelW - width * 0.02; 
+  }
+
   let totalH = rows * panelH + (rows - 1) * panelGap;
   let panelStartY = (height - totalH - height * 0.05) - levelLift; 
   if (panelStartY < height * 0.1) panelStartY = height * 0.1;
@@ -267,6 +330,7 @@ function initPanels() {
   }
 }
 
+// --- 描画ループ ---
 function draw() {
   background(0);
   if (bgImage) {
@@ -275,6 +339,9 @@ function draw() {
     let dw, dh, dx, dy;
     if (canvasAspect > imgAspect) { dw=width; dh=width/imgAspect; dx=0; dy=(height-dh)/2; }
     else { dh=height; dw=height*imgAspect; dy=0; dx=(width-dw)/2; }
+    
+    // 背景も左右反転させる？ いや、スタジアムはそのままの方が自然か。
+    // そのまま描画
     image(bgImage, dx, dy, dw, dh);
   }
 
@@ -349,13 +416,17 @@ function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 280;
+  
+  // 文字位置の微調整（左右で変える）
+  let textOffset = isRightHand ? -150 : 150;
+
   if (!handDetected) {
     text("カメラに手を映してください", width/2, height/2);
     return;
   }
 
-  if (gameState === 1) text("【可動域測定 1/2】\n手首を丸に合わせて\n親指を閉じてタップ", uiX - 120, uiY);
-  else if (gameState === 2) text("【可動域測定 2/2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 120, uiY);
+  if (gameState === 1) text("【可動域測定 1/2】\n手首を丸に合わせて\n親指を閉じてタップ", uiX + textOffset, uiY);
+  else if (gameState === 2) text("【可動域測定 2/2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX + textOffset, uiY);
 }
 
 function drawErrorScreen() {
@@ -384,13 +455,18 @@ function playGame() {
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
   let isBatActive = (progress >= 0.25); 
-  
   let batBaseLen = 140;
   let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
-  rotate(map(progress, 0, 1, PI/4, -PI/4));
+  
+  // バットの回転方向（左右で逆）
+  if (isRightHand) {
+    rotate(map(progress, 0, 1, PI/4, -PI/4));
+  } else {
+    rotate(map(progress, 0, 1, -PI/4, PI/4));
+  }
   
   if (isBatActive) {
     fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0);
@@ -412,7 +488,7 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // ガイド内で振ったか
+    // ガイド内判定
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
     let inZone = (distToGuide < 100); 
 
@@ -429,7 +505,6 @@ function playGame() {
           p.active = false; score++; 
           
           combo++;
-          // ２．コンボメッセージの追加 (40回超え)
           if (combo > 40) showMessage("最高かよっ❗️", color(255, 50, 50));
           else if (combo > 30) showMessage("大谷翔平かよ❗️👍️", color(255, 0, 255));
           else if (combo > 20) showMessage("最高にイイじゃん！👍️", color(255, 100, 0));
@@ -482,10 +557,9 @@ function drawGameUI(progress) {
   let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
   text(`Life: ${hearts}${empty}`, 20, 20);
 
-  // １．可動域表示を画面中央上へ
   let uiW = 220; 
   let uiX = width / 2 - uiW / 2; // 中央
-  let uiY = 10; // 上部
+  let uiY = 10; 
   
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
   
@@ -511,16 +585,25 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 class Ball {
   constructor(currentLevel) {
     this.startX = 0; this.startY = height * 0.85; 
-    this.x = this.startX; this.y = this.startY;
+    
+    // 左右反転: 左手モードならボールは右下から出る、と見せかけて
+    // 実際は「投げる位置」ではなく「飛んでくる方向」が重要。
+    // シンプルに画面下中央付近から、ガイドに向かって飛ぶようにする。
+    // 右手モード: パネル(左)へ打ち返す -> ボールは右寄りから来ると打ちやすい？
+    // いや、正面からの方が自然。startXは中央でOK。
+    
+    this.x = width / 2; 
+    this.y = height; 
 
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
 
+    // 丸ガイドに向かって飛ぶ
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
 
-    let dirX = targetX - this.startX; let dirY = targetY - this.startY;
+    let dirX = targetX - this.x; let dirY = targetY - this.y;
     let distLen = sqrt(dirX*dirX + dirY*dirY);
     
     this.vx = (dirX / distLen) * speed; 
@@ -533,16 +616,34 @@ class Ball {
   hit(progress) {
     this.isHit = true; this.ballColor = color(255, 255, 0);
     
+    // 左右でターゲットエリアの方向が変わる
     let areaW = 3 * panels[0].w + 30; 
-    let areaLeft = panelStartX; 
-    let areaRight = panelStartX + areaW;
+    let areaLeft, areaRight;
+
+    if (isRightHand) {
+      // 右手: パネルは左側
+      areaLeft = panelStartX; 
+      areaRight = panelStartX + areaW;
+    } else {
+      // 左手: パネルは右側
+      areaLeft = panelStartX;
+      areaRight = panelStartX + areaW;
+    }
     
-    let targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    // ターゲットX計算（左右共通のロジックでいけるか確認）
+    // 右手(RightHand=true): progress小(右側・遅い) -> Right, progress大(左側・早い) -> Left
+    // 左手(RightHand=false): progress小(左側・遅い) -> Left, progress大(右側・早い) -> Right
+    let targetX;
+    if (isRightHand) {
+        targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    } else {
+        // 左手は開くと右へ振る
+        targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
+    }
 
     let areaTop = panels[0].y; 
     let areaBottom = panels[8].y + panels[8].h;
     
-    // 超優しめ設定
     let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
 
     let dx = targetX - this.x; let dy = targetY - this.y;
