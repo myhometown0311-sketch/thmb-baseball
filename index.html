@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - ROM Measure</title>
+  <title>Thumb Baseball - HomeBase Fix</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
@@ -58,18 +58,11 @@ let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
 let isGameStarted = false;
 
-// ゲーム状態 
-// 0:未開始, 1:測定(閉), 2:測定(開), 3:プレイ, 4:エラー, 5:ゲームオーバー
 let gameState = 1; 
-
-// 可動域測定用
-let angleClosed = 0; // 閉じた時の角度
-let angleOpen = 0;   // 開いた時の角度
-let currentAngle = 0;
-let currentCm = 0;   // cm換算値
-
+let angleClosed = 0, angleOpen = 0, currentAngle = 0;
+let currentProgressPercent = 0; 
 let fixedWristPosition = null; 
-const ALLOWED_MOVEMENT_RADIUS = 120; // 少し緩くしました
+const ALLOWED_MOVEMENT_RADIUS = 120;
 
 let balls = [];
 let panels = []; 
@@ -87,9 +80,8 @@ let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
 
 // ホームベースサイズ
-const HB_WIDTH = 140;
-const HB_HEIGHT_RECT = 80;
-const HB_HEIGHT_TRI = 70;
+const HB_WIDTH = 120;
+const HB_HEIGHT = 120;
 
 function log(msg) {
   const el = document.getElementById('debugLog');
@@ -203,20 +195,16 @@ function handleInput() {
   if (!isGameStarted) return;
   if (getAudioContext().state !== 'running') getAudioContext().resume();
   
-  // ゲームオーバー/エラーからの復帰
   if (gameState === 5 || gameState === 4) { resetGame(); return; }
 
-  // 測定＆ゲーム進行
   if (handDetected && thumbTip && wrist) {
     if (gameState === 1) { 
-        // 閉じた位置を記録
         angleClosed = currentAngle; 
-        gameState = 2; // 次へ
+        gameState = 2; 
     } else if (gameState === 2) { 
-        // 開いた位置を記録
         angleOpen = currentAngle; 
         fixedWristPosition = createVector(wrist.x, wrist.y);
-        gameState = 3; // ゲーム開始
+        gameState = 3; 
     }
   }
 }
@@ -225,7 +213,7 @@ function touchStarted() { handleInput(); return false; }
 function mousePressed() { handleInput(); }
 
 function resetGame() {
-  gameState = 1; // 測定からやり直し
+  gameState = 1; 
   balls = [];
   score = 0;
   level = 1;
@@ -342,7 +330,6 @@ function drawAlwaysGuide() {
   let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
   let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
   
-  // 手が見つかっている時はガイドを緑に
   if (handDetected) {
     stroke(0, 255, 0); 
     if (gameState < 3) fill(0, 255, 0, 50);
@@ -351,15 +338,21 @@ function drawAlwaysGuide() {
   }
   
   strokeWeight(4); 
-  // ホームベース型ガイド
+  
+  // １．左向きホームベースの描画
   push();
   translate(centerX, centerY);
   beginShape();
-  vertex(-HB_WIDTH / 2, -HB_HEIGHT_RECT / 2);
-  vertex(HB_WIDTH / 2, -HB_HEIGHT_RECT / 2);
-  vertex(HB_WIDTH / 2, HB_HEIGHT_RECT / 2);
-  vertex(0, HB_HEIGHT_RECT / 2 + HB_HEIGHT_TRI);
-  vertex(-HB_WIDTH / 2, HB_HEIGHT_RECT / 2);
+  // 頂点（左側・ピッチャー方向）
+  vertex(-HB_WIDTH/2, 0); 
+  // 左上
+  vertex(0, -HB_HEIGHT/2);
+  // 右上
+  vertex(HB_WIDTH/2, -HB_HEIGHT/2);
+  // 右下
+  vertex(HB_WIDTH/2, HB_HEIGHT/2);
+  // 左下
+  vertex(0, HB_HEIGHT/2);
   endShape(CLOSE);
   pop();
 
@@ -382,12 +375,8 @@ function drawSetupUI() {
     return;
   }
 
-  // 3. 測定手順の表示
-  if (gameState === 1) {
-    text("【可動域測定 1/2】\n①ホームベースに手首を合わせる\n②親指を「閉じて」\n③画面タップ", uiX - 120, uiY);
-  } else if (gameState === 2) {
-    text("【可動域測定 2/2】\n①手首を動かさずに\n②親指を「全開にして」\n③画面タップ", uiX - 120, uiY);
-  }
+  if (gameState === 1) text("【可動域測定 1/2】\n手首をホームベースに合わせ\n親指を閉じてタップ", uiX - 120, uiY);
+  else if (gameState === 2) text("【可動域測定 2/2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 120, uiY);
 }
 
 function drawErrorScreen() {
@@ -409,10 +398,7 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // 測定した閉・開の角度を使って正規化 (0.0〜1.0)
   let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
-  
-  // 3. cm換算 (最大10cmと仮定して表示)
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
@@ -447,7 +433,7 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // 1. 当たり判定を巨大化 (300px)
+    // 当たり判定：巨大化
     let hitThreshold = 300; 
     
     if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < hitThreshold) {
@@ -501,19 +487,16 @@ function drawGameUI(progress) {
   let uiW = 220; let uiX = width - uiW - 20; let uiY = 100;
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
   
-  // 3. 可動域（cm）表示
   fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
   text("現在の可動域", uiX + uiW/2, uiY + 5);
   
-  // cmの数値を中央に大きく表示
   textSize(30); textStyle(BOLD);
   text(currentCm.toFixed(1) + " cm", uiX + uiW/2, uiY + 30);
 
-  // ゲージ
   let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
-  stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); // 枠
+  stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
   noStroke(); fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
-  rect(barX, barY, map(progress, 0, 1, 0, barW), 10); // バー
+  rect(barX, barY, map(progress, 0, 1, 0, barW), 10); 
 
   if (messageTimer > 0) {
     textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
@@ -528,12 +511,13 @@ class Ball {
     this.startX = 0; this.startY = height * 0.85; 
     this.x = this.startX; this.y = this.startY;
 
+    // ボールは遅め
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
 
-    // ホームベース範囲内を狙う
+    // ホームベース範囲内を狙う（幅の少し内側）
     let homeBaseCenterX = guidePositionX;
-    let targetX = random(homeBaseCenterX - HB_WIDTH/2, homeBaseCenterX + HB_WIDTH/2);
+    let targetX = random(homeBaseCenterX - HB_WIDTH/3, homeBaseCenterX + HB_WIDTH/3);
     let targetY = guidePositionY - 50; 
 
     let dirX = targetX - this.startX; let dirY = targetY - this.startY;
@@ -552,11 +536,17 @@ class Ball {
     let areaW = 3 * panels[0].w + 30; 
     let areaLeft = panelStartX; 
     let areaRight = panelStartX + areaW;
+    
+    // 左右(X): タイミング重視
     let targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
 
     let areaTop = panels[0].y; 
     let areaBottom = panels[8].y + panels[8].h;
-    let targetY = map(progress, 0.3, 1.0, areaBottom, areaTop);
+    
+    // ２．流し打ち（少し開いた状態）でも上段に飛ぶように調整
+    // 0.3(開け始め) -> 下段
+    // 0.8(80%開)   -> 上段
+    let targetY = map(progress, 0.3, 0.80, areaBottom, areaTop - 30); 
 
     let dx = targetX - this.x; let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
