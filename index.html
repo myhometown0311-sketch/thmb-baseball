@@ -3,64 +3,83 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Universal Fix</title>
+  <title>Thumb Baseball - Split Layout</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
     
-    /* スタート画面オーバーレイ（スクロール可能に） */
+    /* スタート画面オーバーレイ（左右分割レイアウト） */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
-      display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
+      display: flex; flex-direction: row; /* 横並び */
+      justify-content: center; align-items: center;
       z-index: 100; color: white; text-align: center;
-      padding-top: 20px; overflow-y: auto;
     }
-    
-    h1 { margin: 0 0 10px 0; font-size: 24px; color: #ffeb3b; }
 
-    /* 説明文エリア（上の方に配置） */
+    /* 左側：説明エリア */
+    #left-panel {
+      width: 45%;
+      padding: 20px;
+      display: flex; justify-content: center; align-items: center;
+    }
+
     #instruction {
       background: rgba(255, 255, 255, 0.15);
       border-radius: 10px;
       padding: 15px;
-      margin-bottom: 20px;
-      width: 85%;
       font-size: 13px;
       line-height: 1.6;
       text-align: left;
       border: 1px solid #555;
+      width: 100%;
     }
 
-    /* ボタンエリア */
+    /* 右側：タイトル＆ボタンエリア */
+    #right-panel {
+      width: 45%;
+      padding: 20px;
+      display: flex; flex-direction: column; 
+      justify-content: center; align-items: center;
+    }
+    
+    h1 { margin: 0 0 20px 0; font-size: 32px; color: #ffeb3b; text-shadow: 2px 2px 0 #000; }
+
     .btn-container {
-      display: flex; gap: 20px; justify-content: center; width: 100%;
+      display: flex; flex-direction: column; gap: 15px; width: 80%;
     }
 
     .hand-btn {
-      padding: 15px 30px; font-size: 18px; font-weight: bold;
+      padding: 15px 0; font-size: 20px; font-weight: bold;
       color: #000; background: #ffff00; border: 3px solid #fff; border-radius: 30px; cursor: pointer;
       box-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
       -webkit-tap-highlight-color: transparent;
-      min-width: 140px;
+      width: 100%;
     }
     .hand-btn:active { transform: scale(0.95); background: #cccc00; }
 
     /* ステータス表示 */
     #statusMsg {
-      margin-top: 20px; color: #00ff00; font-weight: bold; font-size: 16px;
+      margin-top: 15px; color: #00ff00; font-weight: bold; font-size: 14px; min-height: 20px;
     }
 
-    /* デバッグログ（非表示設定可） */
+    /* デバッグログ（エラー時のみ表示） */
     #debugLog {
       position: fixed; bottom: 0; left: 0; width: 100%; 
-      background: rgba(0,0,0,0.8); color: #00ff00; 
+      background: rgba(0,0,0,0.8); color: #ff5555; 
       font-size: 10px; font-family: monospace; padding: 5px; 
       z-index: 999; pointer-events: none; max-height: 100px; overflow-y: auto;
-      display: none; /* 通常は非表示 */
+      display: none; 
     }
     
     #rawVideo { display: none; }
+
+    /* スマホ縦持ち時の警告など */
+    @media (orientation: portrait) {
+      #overlay { flex-direction: column; }
+      #left-panel, #right-panel { width: 90%; }
+      .btn-container { flex-direction: row; }
+    }
   </style>
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
@@ -74,24 +93,28 @@
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
 
   <div id="overlay">
-    <h1>Thumb Baseball</h1>
-    
-    <div id="instruction">
-      <strong>【遊び方・手順】</strong><br>
-      1. スマホを<strong>「横画面」</strong>にしてください。<br>
-      2. プレイする手（右手／左手）を選んでボタンを押します。<br>
-      3. <strong>「カメラの許可」</strong>を必ずOKにしてください。<br>
-      4. 画面の丸いガイドに手首を合わせます。<br>
-      5. 最初に<strong>「可動域測定」</strong>を行います。<br>
-         (指示に従い、親指を閉じる→開く)<br>
-      6. ゲーム開始！タイミングよく親指を開いてスイング！
+    <div id="left-panel">
+      <div id="instruction">
+        <strong>【遊び方・手順】</strong><br>
+        1. <strong>カメラの許可</strong>をOKにしてください。<br>
+        2. 画面の丸いガイドに手首を合わせます。<br>
+        3. 最初に<strong>「可動域測定」</strong>を行います。<br>
+           (指示に従い、親指を閉じる→開く)<br>
+        4. ゲーム開始！<br>
+           丸いガイドの中で親指を開いてスイング！<br>
+           ボールを引きつけて打ちましょう。
+      </div>
     </div>
 
-    <div id="statusMsg">プレイする手を選んでください</div>
+    <div id="right-panel">
+      <h1>Thumb Baseball</h1>
+      
+      <div id="btn-group" class="btn-container">
+        <button class="hand-btn" onclick="startSequence('right')">右手でプレイ</button>
+        <button class="hand-btn" onclick="startSequence('left')">左手でプレイ</button>
+      </div>
 
-    <div class="btn-container">
-      <button class="hand-btn" onclick="startSequence('right')">右手</button>
-      <button class="hand-btn" onclick="startSequence('left')">左手</button>
+      <div id="statusMsg">プレイする手を選んでください</div>
     </div>
   </div>
 
@@ -132,7 +155,7 @@ function log(msg) {
   const el = document.getElementById('debugLog');
   if(el) {
     el.innerText = msg + "\n" + el.innerText;
-    el.style.display = "block"; // エラー時のみ表示
+    el.style.display = "block"; 
   }
   console.log(msg);
 }
@@ -148,7 +171,7 @@ function setup() {
     () => { console.log("画像なし(黒背景)"); }
   );
   
-  // 初期レイアウト（右手仮定）
+  // 初期レイアウト
   updateLayout();
   initPanels();
 }
@@ -157,23 +180,23 @@ function setup() {
 async function startSequence(hand) {
   isRightHand = (hand === 'right');
   
-  // UI更新
-  document.querySelector('.btn-container').style.display = 'none';
-  document.getElementById('statusMsg').innerText = "システム起動中...許可を出してください";
+  // UI更新: ボタンを消してロード中を表示
+  document.getElementById('btn-group').style.display = 'none';
+  document.getElementById('statusMsg').innerText = "システム起動中...カメラを許可してください";
   
-  // 音声の初期化（ユーザーアクション内で行う必須処理）
+  // 1. 音声の初期化 (Promise)
   try {
     await userStartAudio();
     initAudio();
   } catch(e) {
-    console.log("Audio Init Error (Ignored): " + e);
+    console.log("Audio warning: " + e);
   }
 
   // レイアウト更新
   updateLayout();
   initPanels();
 
-  // カメラ起動へ
+  // 2. カメラ起動へ
   startCameraSystem();
 }
 
@@ -190,16 +213,24 @@ function startCameraSystem() {
   navigator.mediaDevices.getUserMedia(constraints)
     .then(stream => {
       rawVideo.srcObject = stream;
-      // Android対応: メタデータ読み込み後に再生
+      
+      // Android/iOS互換性を高めるための再生処理
       rawVideo.onloadedmetadata = () => {
-        rawVideo.play();
-        document.getElementById('statusMsg').innerText = "AI読み込み中...お待ちください";
-        initMediaPipe(); // 映像が来てからAI起動
+        rawVideo.play().then(() => {
+          document.getElementById('statusMsg').innerText = "AI読み込み中...";
+          initMediaPipe(); // ビデオ再生成功後にAI起動
+        }).catch(e => {
+          log("Video Play Error: " + e);
+          alert("ビデオ再生エラー。ページを更新してください。");
+        });
       };
     })
     .catch(err => {
-      alert("カメラエラー: " + err.message + "\n設定からカメラ権限を確認してください");
-      log("Cam Error: " + err);
+      alert("カメラエラー: " + err.message + "\n設定からカメラ権限を許可してください");
+      log("Camera Error: " + err);
+      // ボタンを復活させる
+      document.getElementById('btn-group').style.display = 'flex';
+      document.getElementById('statusMsg').innerText = "カメラエラー";
     });
 }
 
@@ -210,17 +241,20 @@ function initMediaPipe() {
   }
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
+  
   hands.setOptions({
     maxNumHands: 1, 
-    modelComplexity: 0, // 0=Lite (最軽量・高速)
+    modelComplexity: 0, // Liteモード
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5
   });
+  
   hands.onResults(onResults);
 
-  // カメラユーティリティを使ってフレームを送信
+  // Camera Utilsを使用
   camera = new Camera(rawVideo, {
     onFrame: async () => { 
+      // ビデオが有効な時だけ送信
       if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
         await hands.send({image: rawVideo}); 
       }
@@ -229,11 +263,12 @@ function initMediaPipe() {
   });
   
   camera.start().then(() => {
-    // 起動成功
+    // 起動成功: オーバーレイを非表示
     document.getElementById('overlay').style.display = 'none';
     isGameStarted = true;
   }).catch(e => {
     log("AI Start Error: " + e);
+    alert("AI起動エラー: " + e);
   });
 }
 
@@ -252,12 +287,9 @@ function onResults(results) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
     
-    // 座標取得
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
-    
-    // 角度計算
     currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
   } else {
     handDetected = false;
@@ -335,7 +367,6 @@ function initPanels() {
 
   let levelLift = (level - 1) * (height * 0.05);
   
-  // パネル開始位置
   if (isRightHand) {
     panelStartX = width * 0.02; // 左側
   } else {
@@ -515,7 +546,6 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // ガイド内判定
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
     let inZone = (distToGuide < 100); 
 
@@ -611,7 +641,7 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
-    this.startX = width / 2; // ボールは常に中央下から
+    this.startX = width / 2; 
     this.startY = height; 
     
     this.x = this.startX; 
@@ -620,7 +650,6 @@ class Ball {
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
 
-    // 丸ガイドに向かって飛ぶ
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
