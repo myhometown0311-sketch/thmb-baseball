@@ -3,42 +3,36 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Split Layout</title>
+  <title>Thumb Baseball - Solid Start</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
     
-    /* スタート画面オーバーレイ（左右分割レイアウト） */
+    /* スタート画面オーバーレイ */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
-      display: flex; flex-direction: row; /* 横並び */
+      display: flex; flex-direction: row; 
       justify-content: center; align-items: center;
       z-index: 100; color: white; text-align: center;
     }
 
     /* 左側：説明エリア */
     #left-panel {
-      width: 45%;
-      padding: 20px;
+      width: 45%; padding: 20px;
       display: flex; justify-content: center; align-items: center;
     }
 
     #instruction {
       background: rgba(255, 255, 255, 0.15);
-      border-radius: 10px;
-      padding: 15px;
-      font-size: 13px;
-      line-height: 1.6;
-      text-align: left;
-      border: 1px solid #555;
-      width: 100%;
+      border-radius: 10px; padding: 15px;
+      font-size: 13px; line-height: 1.6;
+      text-align: left; border: 1px solid #555; width: 100%;
     }
 
     /* 右側：タイトル＆ボタンエリア */
     #right-panel {
-      width: 45%;
-      padding: 20px;
+      width: 45%; padding: 20px;
       display: flex; flex-direction: column; 
       justify-content: center; align-items: center;
     }
@@ -63,7 +57,7 @@
       margin-top: 15px; color: #00ff00; font-weight: bold; font-size: 14px; min-height: 20px;
     }
 
-    /* デバッグログ（エラー時のみ表示） */
+    /* エラーログ */
     #debugLog {
       position: fixed; bottom: 0; left: 0; width: 100%; 
       background: rgba(0,0,0,0.8); color: #ff5555; 
@@ -74,11 +68,9 @@
     
     #rawVideo { display: none; }
 
-    /* スマホ縦持ち時の警告など */
     @media (orientation: portrait) {
       #overlay { flex-direction: column; }
       #left-panel, #right-panel { width: 90%; }
-      .btn-container { flex-direction: row; }
     }
   </style>
   
@@ -95,10 +87,10 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【遊び方・手順】</strong><br>
-        1. <strong>カメラの許可</strong>をOKにしてください。<br>
+        <strong>【遊び方】</strong><br>
+        1. <strong>カメラ許可</strong>をOKにします。<br>
         2. 画面の丸いガイドに手首を合わせます。<br>
-        3. 最初に<strong>「可動域測定」</strong>を行います。<br>
+        3. <strong>可動域測定</strong>を行います。<br>
            (指示に従い、親指を閉じる→開く)<br>
         4. ゲーム開始！<br>
            丸いガイドの中で親指を開いてスイング！<br>
@@ -108,12 +100,10 @@
 
     <div id="right-panel">
       <h1>Thumb Baseball</h1>
-      
       <div id="btn-group" class="btn-container">
         <button class="hand-btn" onclick="startSequence('right')">右手でプレイ</button>
         <button class="hand-btn" onclick="startSequence('left')">左手でプレイ</button>
       </div>
-
       <div id="statusMsg">プレイする手を選んでください</div>
     </div>
   </div>
@@ -168,7 +158,7 @@ function setup() {
   
   loadImage('stadium_bg.png', 
     (img) => { bgImage = img; },
-    () => { console.log("画像なし(黒背景)"); }
+    () => { console.log("画像なし"); }
   );
   
   // 初期レイアウト
@@ -180,12 +170,14 @@ function setup() {
 async function startSequence(hand) {
   isRightHand = (hand === 'right');
   
-  // UI更新: ボタンを消してロード中を表示
+  // UI更新
   document.getElementById('btn-group').style.display = 'none';
-  document.getElementById('statusMsg').innerText = "システム起動中...カメラを許可してください";
+  document.getElementById('statusMsg').innerText = "システム起動中...";
+  document.getElementById('statusMsg').style.color = "#ffff00";
   
-  // 1. 音声の初期化 (Promise)
+  // 1. 音声コンテキストの再開 (iOS/Android対策)
   try {
+    getAudioContext().resume();
     await userStartAudio();
     initAudio();
   } catch(e) {
@@ -196,7 +188,7 @@ async function startSequence(hand) {
   updateLayout();
   initPanels();
 
-  // 2. カメラ起動へ
+  // 2. カメラ起動
   startCameraSystem();
 }
 
@@ -205,8 +197,7 @@ function startCameraSystem() {
     audio: false,
     video: { 
       facingMode: "user", 
-      width: { ideal: 640 }, 
-      height: { ideal: 480 } 
+      // width/heightを指定しないことで互換性を高める
     }
   };
 
@@ -214,47 +205,42 @@ function startCameraSystem() {
     .then(stream => {
       rawVideo.srcObject = stream;
       
-      // Android/iOS互換性を高めるための再生処理
+      // ビデオが再生可能になったら
       rawVideo.onloadedmetadata = () => {
         rawVideo.play().then(() => {
           document.getElementById('statusMsg').innerText = "AI読み込み中...";
-          initMediaPipe(); // ビデオ再生成功後にAI起動
+          initMediaPipe(); 
         }).catch(e => {
           log("Video Play Error: " + e);
-          alert("ビデオ再生エラー。ページを更新してください。");
+          alert("ビデオ再生に失敗しました。");
         });
       };
     })
     .catch(err => {
-      alert("カメラエラー: " + err.message + "\n設定からカメラ権限を許可してください");
-      log("Camera Error: " + err);
-      // ボタンを復活させる
-      document.getElementById('btn-group').style.display = 'flex';
+      alert("カメラエラー: " + err.message + "\nブラウザの設定でカメラを許可してください。");
+      document.getElementById('btn-group').style.display = 'flex'; // ボタン復活
       document.getElementById('statusMsg').innerText = "カメラエラー";
+      document.getElementById('statusMsg').style.color = "#ff0000";
     });
 }
 
 function initMediaPipe() {
   if (typeof Hands === 'undefined') {
-    alert("AIライブラリの読み込みに失敗しました。ネット接続を確認してください。");
+    alert("AIライブラリの読み込みに失敗しました。");
     return;
   }
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
-  
   hands.setOptions({
     maxNumHands: 1, 
     modelComplexity: 0, // Liteモード
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5
   });
-  
   hands.onResults(onResults);
 
-  // Camera Utilsを使用
   camera = new Camera(rawVideo, {
     onFrame: async () => { 
-      // ビデオが有効な時だけ送信
       if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
         await hands.send({image: rawVideo}); 
       }
@@ -263,12 +249,14 @@ function initMediaPipe() {
   });
   
   camera.start().then(() => {
-    // 起動成功: オーバーレイを非表示
+    // 起動成功したらオーバーレイを消す
     document.getElementById('overlay').style.display = 'none';
     isGameStarted = true;
   }).catch(e => {
     log("AI Start Error: " + e);
-    alert("AI起動エラー: " + e);
+    // AI起動に失敗しても映像が出るならゲーム画面へ遷移させる（緊急対応）
+    document.getElementById('overlay').style.display = 'none';
+    isGameStarted = true;
   });
 }
 
