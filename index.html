@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Pitching Fix</title>
+  <title>Thumb Baseball - Ultimate Response</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
@@ -32,23 +32,26 @@
     .btn-container { display: flex; flex-direction: column; gap: 15px; width: 80%; }
 
     .hand-btn {
-      padding: 15px 0; font-size: 20px; font-weight: bold;
+      padding: 20px 0; font-size: 22px; font-weight: bold;
       color: #000; background: #ffff00; border: 3px solid #fff; border-radius: 30px; cursor: pointer;
       box-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
       -webkit-tap-highlight-color: transparent;
-      width: 100%;
+      width: 100%; user-select: none;
     }
-    .hand-btn:active { transform: scale(0.95); background: #cccc00; }
+    .hand-btn:active { transform: scale(0.95); background: #cccc00; opacity: 0.8; }
 
-    #statusMsg { margin-top: 15px; color: #00ff00; font-weight: bold; font-size: 14px; min-height: 20px; }
-    
-    #debugLog {
-      position: fixed; bottom: 0; left: 0; width: 100%; 
-      background: rgba(0,0,0,0.8); color: #ff5555; 
-      font-size: 10px; font-family: monospace; padding: 5px; 
-      z-index: 999; pointer-events: none; display: none; 
+    /* ステータス表示 */
+    #statusMsg { 
+      margin-top: 20px; color: #00ff00; font-weight: bold; font-size: 16px; min-height: 30px; 
+      padding: 10px; border-radius: 5px;
     }
     
+    /* リセットボタン（エラー時用） */
+    #retryBtn {
+      display: none; margin-top: 20px; padding: 10px 20px;
+      background: #ff5555; color: white; border: none; border-radius: 5px;
+    }
+
     #rawVideo { display: none; }
 
     @media (orientation: portrait) {
@@ -64,7 +67,6 @@
 </head>
 <body>
 
-  <div id="debugLog"></div>
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
 
   <div id="overlay">
@@ -83,11 +85,14 @@
 
     <div id="right-panel">
       <h1>Thumb Baseball</h1>
+      
       <div id="btn-group" class="btn-container">
-        <button class="hand-btn" onclick="startSequence('right')">右手でプレイ</button>
-        <button class="hand-btn" onclick="startSequence('left')">左手でプレイ</button>
+        <button id="btnRight" class="hand-btn">右手でプレイ</button>
+        <button id="btnLeft" class="hand-btn">左手でプレイ</button>
       </div>
+
       <div id="statusMsg">プレイする手を選んでください</div>
+      <button id="retryBtn" onclick="location.reload()">再読み込み</button>
     </div>
   </div>
 
@@ -124,17 +129,17 @@ let batRangeStart, batRangeEnd;
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
 
-// ログ出力
-function log(msg) {
-  const el = document.getElementById('debugLog');
-  if(el) {
-    el.innerText = msg + "\n" + el.innerText;
-    el.style.display = "block";
-  }
-  console.log(msg);
-}
+// --- 起動時のイベント設定 ---
+// window.onloadを使うことで、HTML要素が確実に読み込まれてからイベントを設定する
+window.onload = function() {
+  const btnRight = document.getElementById('btnRight');
+  const btnLeft = document.getElementById('btnLeft');
 
-// --- 初期化 ---
+  // タッチイベントとクリックイベントの両方を設定して反応漏れを防ぐ
+  btnRight.onclick = () => startSequence('right');
+  btnLeft.onclick = () => startSequence('left');
+};
+
 function setup() {
   pixelDensity(1);
   let cnv = createCanvas(windowWidth, windowHeight);
@@ -151,22 +156,37 @@ function setup() {
 
 // --- 起動シーケンス ---
 async function startSequence(hand) {
+  // 1. まずUIを即座に更新する（ユーザーへの反応）
+  const btnGroup = document.getElementById('btn-group');
+  const statusMsg = document.getElementById('statusMsg');
+  
+  btnGroup.style.display = 'none'; // ボタンを消す
+  statusMsg.innerText = "起動中...カメラを許可してください";
+  statusMsg.style.backgroundColor = "rgba(0,0,0,0.5)";
+  
   isRightHand = (hand === 'right');
   
-  document.getElementById('btn-group').style.display = 'none';
-  document.getElementById('statusMsg').innerText = "システム起動中...許可を出してください";
-  
+  // 2. 音声コンテキストの処理
   try {
+    if (getAudioContext().state !== 'running') {
+      getAudioContext().resume();
+    }
     await userStartAudio();
     initAudio();
-  } catch(e) { console.log("Audio Error Ignored: " + e); }
+  } catch(e) {
+    console.log("Audio warning: " + e);
+  }
 
   updateLayout();
   initPanels();
-  startCameraSystem();
+
+  // 3. カメラ起動（少し遅らせてUI描画を優先させる）
+  setTimeout(startCameraSystem, 100);
 }
 
 function startCameraSystem() {
+  const statusMsg = document.getElementById('statusMsg');
+  
   const constraints = {
     audio: false,
     video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
@@ -177,20 +197,21 @@ function startCameraSystem() {
       rawVideo.srcObject = stream;
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
-        document.getElementById('statusMsg').innerText = "AI読み込み中...";
+        statusMsg.innerText = "AIエンジン読み込み中...";
         initMediaPipe(); 
       };
     })
     .catch(err => {
-      alert("カメラエラー: " + err.message);
-      document.getElementById('btn-group').style.display = 'flex';
-      document.getElementById('statusMsg').innerText = "カメラエラー";
+      statusMsg.innerText = "カメラエラー: " + err.message;
+      statusMsg.style.color = "red";
+      document.getElementById('retryBtn').style.display = 'inline-block';
     });
 }
 
 function initMediaPipe() {
   if (typeof Hands === 'undefined') {
-    alert("AIライブラリ読込失敗");
+    document.getElementById('statusMsg').innerText = "AIライブラリ読込エラー";
+    document.getElementById('retryBtn').style.display = 'inline-block';
     return;
   }
 
@@ -216,7 +237,8 @@ function initMediaPipe() {
     document.getElementById('overlay').style.display = 'none';
     isGameStarted = true;
   }).catch(e => {
-    log("AI Start Error: " + e);
+    document.getElementById('statusMsg').innerText = "AI起動エラー: " + e;
+    document.getElementById('retryBtn').style.display = 'inline-block';
   });
 }
 
@@ -387,30 +409,21 @@ function drawAlwaysGuide() {
     stroke(255, 0, 0); noFill();
   }
   
-  strokeWeight(4); 
-  ellipse(centerX, centerY, 120, 120); 
+  strokeWeight(4); ellipse(centerX, centerY, 120, 120); 
   strokeWeight(2); rect(centerX, centerY - 150, 350, 450, 20);
 }
 
 function checkHandStability() {
   if (!wrist || !fixedWristPosition) return;
-  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > ALLOWED_MOVEMENT_RADIUS) {
-    gameState = 4;
-  }
+  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > ALLOWED_MOVEMENT_RADIUS) gameState = 4;
 }
 
 function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
-  let uiX = guidePositionX; 
-  let uiY = guidePositionY - 280;
-  
+  let uiX = guidePositionX; let uiY = guidePositionY - 280;
   let textOffset = isRightHand ? -150 : 150;
 
-  if (!handDetected) {
-    text("カメラに手を映してください", width/2, height/2);
-    return;
-  }
-
+  if (!handDetected) { text("カメラに手を映してください", width/2, height/2); return; }
   if (gameState === 1) text("【可動域測定 1/2】\n手首を丸に合わせて\n親指を閉じてタップ", uiX + textOffset, uiY);
   else if (gameState === 2) text("【可動域測定 2/2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX + textOffset, uiY);
 }
@@ -439,73 +452,51 @@ function playGame() {
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
-  
   let isBatActive = (progress >= 0.25); 
   let batBaseLen = 140;
   let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
+  if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
+  else rotate(map(progress, 0, 1, -PI/4, PI/4));
   
-  if (isRightHand) {
-    rotate(map(progress, 0, 1, PI/4, -PI/4));
-  } else {
-    rotate(map(progress, 0, 1, -PI/4, PI/4));
-  }
-  
-  if (isBatActive) {
-    fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0);
-  } else {
-    fill(100, 150); noStroke();
-  }
+  if (isBatActive) { fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0); }
+  else { fill(100, 150); noStroke(); }
   rect(-15, 0, 30, batLen, 10);
-  if (!isBatActive) {
-    fill(255); textSize(20); textAlign(CENTER); noStroke();
-    text("WAIT", 0, -20);
-  }
+  if (!isBatActive) { fill(255); textSize(20); textAlign(CENTER); noStroke(); text("WAIT", 0, -20); }
   pop();
 
-  if (balls.length === 0 && frameCount % 60 === 0) {
-    balls.push(new Ball(level));
-  }
+  if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball(level));
 
   for (let i = balls.length - 1; i >= 0; i--) {
-    let b = balls[i];
-    b.update(); b.display();
+    let b = balls[i]; b.update(); b.display();
     
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
     let inZone = (distToGuide < 100); 
-
     let hitThreshold = 300; 
     
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
-      playHitSound();
-      b.hit(progress); 
+      playHitSound(); b.hit(progress); 
     }
 
     if (b.isHit) {
       for (let p of panels) {
         if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
-          p.active = false; score++; 
-          
-          combo++;
+          p.active = false; score++; combo++;
           if (combo > 40) showMessage("最高かよっ❗️", color(255, 50, 50));
           else if (combo > 30) showMessage("大谷翔平かよ❗️👍️", color(255, 0, 255));
           else if (combo > 20) showMessage("最高にイイじゃん！👍️", color(255, 100, 0));
           else if (combo > 10) showMessage("めっちゃイイじゃん❗️👍️", color(255, 255, 0));
           else showMessage("イイじゃん！👍️", color(255, 255, 0));
-
-          checkLevelUp();
-          balls.splice(i, 1); break;
+          checkLevelUp(); balls.splice(i, 1); break;
         }
       }
     }
 
     if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) {
       if (!b.isHit) {
-        lives--; 
-        combo = 0; 
-        showMessage("MISS!", color(100, 100, 255));
+        lives--; combo = 0; showMessage("MISS!", color(100, 100, 255));
         if (lives <= 0) gameState = 5;
       }
       balls.splice(i, 1);
@@ -515,15 +506,12 @@ function playGame() {
 }
 
 function checkLevelUp() {
-  if (score > 0 && score % 10 === 0) {
-    level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0));
-  }
+  if (score > 0 && score % 10 === 0) { level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0)); }
 }
 
 function playHitSound() {
   if (hitSoundEnv && hitSoundOsc) {
-    hitSoundOsc.freq(800); hitSoundEnv.play();
-    setTimeout(() => { hitSoundOsc.freq(1200); }, 30);
+    hitSoundOsc.freq(800); hitSoundEnv.play(); setTimeout(() => { hitSoundOsc.freq(1200); }, 30);
   }
 }
 
@@ -532,26 +520,17 @@ function drawGameUI(progress) {
   textAlign(RIGHT, TOP); textSize(32); 
   text(`打点: ${score}`, width - 20, 20); text(`Lv.${level}`, width - 20, 60);
 
-  if (combo > 1) {
-    fill(255, 200, 0); textSize(40);
-    text(`${combo} COMBO!`, width - 20, 110);
-  }
+  if (combo > 1) { fill(255, 200, 0); textSize(40); text(`${combo} COMBO!`, width - 20, 110); }
 
   textAlign(LEFT, TOP); fill(255, 50, 50); textSize(32);
   let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
   text(`Life: ${hearts}${empty}`, 20, 20);
 
-  let uiW = 220; 
-  let uiX = width / 2 - uiW / 2; 
-  let uiY = 10; 
-  
+  let uiW = 220; let uiX = width / 2 - uiW / 2; let uiY = 10; 
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
-  
   fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
   text("現在の可動域", uiX + uiW/2, uiY + 5);
-  
-  textSize(30); textStyle(BOLD);
-  text(currentCm.toFixed(1) + " cm", uiX + uiW/2, uiY + 30);
+  textSize(30); textStyle(BOLD); text(currentCm.toFixed(1) + " cm", uiX + uiW/2, uiY + 30);
 
   let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
   stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
@@ -569,8 +548,6 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 class Ball {
   constructor(currentLevel) {
     // 修正：左右モードに合わせて出現位置を変える
-    // 右手モード(Left Panels) -> 左からボールが出る (width * 0.1)
-    // 左手モード(Right Panels) -> 右からボールが出る (width * 0.9)
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
     
     // 高さは画面中段よりやや下
