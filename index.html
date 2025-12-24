@@ -3,39 +3,63 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Universal</title>
+  <title>Thumb Baseball - Universal Fix</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
     
-    /* スタート画面オーバーレイ */
+    /* スタート画面オーバーレイ（スクロール可能に） */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
-      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      display: flex; flex-direction: column; justify-content: flex-start; align-items: center;
       z-index: 100; color: white; text-align: center;
+      padding-top: 20px; overflow-y: auto;
     }
     
+    h1 { margin: 0 0 10px 0; font-size: 24px; color: #ffeb3b; }
+
+    /* 説明文エリア（上の方に配置） */
+    #instruction {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 20px;
+      width: 85%;
+      font-size: 13px;
+      line-height: 1.6;
+      text-align: left;
+      border: 1px solid #555;
+    }
+
+    /* ボタンエリア */
     .btn-container {
-      display: flex; gap: 20px; margin-top: 30px;
+      display: flex; gap: 20px; justify-content: center; width: 100%;
     }
 
     .hand-btn {
-      padding: 20px 40px; font-size: 20px; font-weight: bold;
-      color: #000; background: #ffff00; border: 4px solid #fff; border-radius: 50px; cursor: pointer;
-      box-shadow: 0 0 20px rgba(255, 255, 0, 0.5);
+      padding: 15px 30px; font-size: 18px; font-weight: bold;
+      color: #000; background: #ffff00; border: 3px solid #fff; border-radius: 30px; cursor: pointer;
+      box-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
       -webkit-tap-highlight-color: transparent;
+      min-width: 140px;
     }
     .hand-btn:active { transform: scale(0.95); background: #cccc00; }
 
+    /* ステータス表示 */
+    #statusMsg {
+      margin-top: 20px; color: #00ff00; font-weight: bold; font-size: 16px;
+    }
+
+    /* デバッグログ（非表示設定可） */
     #debugLog {
-      position: fixed; top: 0; left: 0; width: 100%; 
-      background: rgba(0,0,0,0.5); color: #00ff00; 
-      font-size: 10px; font-family: monospace; padding: 2px; 
-      z-index: 999; pointer-events: none;
+      position: fixed; bottom: 0; left: 0; width: 100%; 
+      background: rgba(0,0,0,0.8); color: #00ff00; 
+      font-size: 10px; font-family: monospace; padding: 5px; 
+      z-index: 999; pointer-events: none; max-height: 100px; overflow-y: auto;
+      display: none; /* 通常は非表示 */
     }
     
-    /* 生ビデオは非表示（p5で描画するため） */
     #rawVideo { display: none; }
   </style>
   
@@ -46,26 +70,28 @@
 </head>
 <body>
 
-  <div id="debugLog">システム待機中...</div>
+  <div id="debugLog"></div>
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
 
   <div id="overlay">
-    <h1 style="margin:0; font-size:24px;">Thumb Baseball</h1>
-    <p style="font-size:14px; color:#ccc;">スマホを「横画面」にしてください</p>
+    <h1>Thumb Baseball</h1>
     
-    <div id="instruction" style="margin: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px; text-align: left; font-size: 12px; max-width: 80%;">
+    <div id="instruction">
       <strong>【遊び方・手順】</strong><br>
-      1. 下のボタンで「プレイする手」を選びます。<br>
-      2. カメラの許可を求められたら「許可」してください。<br>
-      3. 丸いガイドに手首を合わせます。<br>
-      4. <strong>【可動域測定】</strong>を行います（指示に従い、閉じる→開く）。<br>
-      5. ゲーム開始！丸いガイドの中で親指を素早く開いてバットを振ります。<br>
-      6. タイミングよくパネルを狙い撃ちましょう！
+      1. スマホを<strong>「横画面」</strong>にしてください。<br>
+      2. プレイする手（右手／左手）を選んでボタンを押します。<br>
+      3. <strong>「カメラの許可」</strong>を必ずOKにしてください。<br>
+      4. 画面の丸いガイドに手首を合わせます。<br>
+      5. 最初に<strong>「可動域測定」</strong>を行います。<br>
+         (指示に従い、親指を閉じる→開く)<br>
+      6. ゲーム開始！タイミングよく親指を開いてスイング！
     </div>
 
+    <div id="statusMsg">プレイする手を選んでください</div>
+
     <div class="btn-container">
-      <button class="hand-btn" onclick="selectHand('right')">右手でプレイ</button>
-      <button class="hand-btn" onclick="selectHand('left')">左手でプレイ</button>
+      <button class="hand-btn" onclick="startSequence('right')">右手</button>
+      <button class="hand-btn" onclick="startSequence('left')">左手</button>
     </div>
   </div>
 
@@ -77,7 +103,7 @@ let camera = null;
 let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
 let isGameStarted = false;
-let isRightHand = true; // true:右手, false:左手
+let isRightHand = true; 
 
 let gameState = 1; 
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
@@ -92,7 +118,6 @@ let level = 1;
 let maxLives = 3;
 let lives = maxLives;
 let combo = 0;
-
 let currentCm = 0;
 
 let message = "", messageTimer = 0, messageColor;
@@ -105,7 +130,10 @@ let panelStartX, panelStartY;
 
 function log(msg) {
   const el = document.getElementById('debugLog');
-  if(el) el.innerText = msg;
+  if(el) {
+    el.innerText = msg + "\n" + el.innerText;
+    el.style.display = "block"; // エラー時のみ表示
+  }
   console.log(msg);
 }
 
@@ -116,8 +144,8 @@ function setup() {
   cnv.style('z-index', '1');
   
   loadImage('stadium_bg.png', 
-    (img) => { bgImage = img; log("画像OK"); },
-    () => { log("画像なし(黒背景)"); }
+    (img) => { bgImage = img; },
+    () => { console.log("画像なし(黒背景)"); }
   );
   
   // 初期レイアウト（右手仮定）
@@ -125,31 +153,31 @@ function setup() {
   initPanels();
 }
 
-// --- 手の選択とスタート ---
-async function selectHand(hand) {
+// --- ゲーム開始シーケンス ---
+async function startSequence(hand) {
   isRightHand = (hand === 'right');
   
-  // ボタンを消す
-  document.getElementById('overlay').style.display = 'none'; // 一旦消さずにロード中にするか、あるいは消してロード表示
+  // UI更新
   document.querySelector('.btn-container').style.display = 'none';
-  document.getElementById('instruction').innerHTML = "起動中...<br>カメラの許可を出してください";
+  document.getElementById('statusMsg').innerText = "システム起動中...許可を出してください";
   
-  log(isRightHand ? "右手モード起動..." : "左手モード起動...");
-
+  // 音声の初期化（ユーザーアクション内で行う必須処理）
   try {
     await userStartAudio();
     initAudio();
-  } catch(err) { console.log(err); }
+  } catch(e) {
+    console.log("Audio Init Error (Ignored): " + e);
+  }
 
-  // レイアウト再計算
+  // レイアウト更新
   updateLayout();
   initPanels();
 
-  startNativeCamera();
+  // カメラ起動へ
+  startCameraSystem();
 }
 
-// --- Android/iOS共通 カメラ起動 ---
-function startNativeCamera() {
+function startCameraSystem() {
   const constraints = {
     audio: false,
     video: { 
@@ -162,30 +190,35 @@ function startNativeCamera() {
   navigator.mediaDevices.getUserMedia(constraints)
     .then(stream => {
       rawVideo.srcObject = stream;
-      // Androidでの再生互換性のため
+      // Android対応: メタデータ読み込み後に再生
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
-        initMediaPipe();
+        document.getElementById('statusMsg').innerText = "AI読み込み中...お待ちください";
+        initMediaPipe(); // 映像が来てからAI起動
       };
     })
     .catch(err => {
-      alert("カメラ起動エラー: " + err.message + "\nブラウザの設定を確認してください。");
-      log("Camera Error: " + err.message);
+      alert("カメラエラー: " + err.message + "\n設定からカメラ権限を確認してください");
+      log("Cam Error: " + err);
     });
 }
 
 function initMediaPipe() {
-  if (typeof Hands === 'undefined') return;
+  if (typeof Hands === 'undefined') {
+    alert("AIライブラリの読み込みに失敗しました。ネット接続を確認してください。");
+    return;
+  }
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
   hands.setOptions({
     maxNumHands: 1, 
-    modelComplexity: 0, // 軽量モード
+    modelComplexity: 0, // 0=Lite (最軽量・高速)
     minDetectionConfidence: 0.5, 
     minTrackingConfidence: 0.5
   });
   hands.onResults(onResults);
 
+  // カメラユーティリティを使ってフレームを送信
   camera = new Camera(rawVideo, {
     onFrame: async () => { 
       if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
@@ -196,9 +229,11 @@ function initMediaPipe() {
   });
   
   camera.start().then(() => {
+    // 起動成功
     document.getElementById('overlay').style.display = 'none';
     isGameStarted = true;
-    log("Game Started!");
+  }).catch(e => {
+    log("AI Start Error: " + e);
   });
 }
 
@@ -217,7 +252,7 @@ function onResults(results) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
     
-    // 座標取得 (左右反転処理は描画時にscale(-1,1)で行うため、ここではそのまま取得)
+    // 座標取得
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
@@ -276,12 +311,10 @@ function windowResized() {
 // --- レイアウト調整 (左右対応) ---
 function updateLayout() {
   if (isRightHand) {
-    // 右手モード: ガイド右、パネル左
     batRangeStart = width * 0.85; 
     batRangeEnd = width * 0.55;   
     guidePositionX = width * 0.85;
   } else {
-    // 左手モード: ガイド左、パネル右
     batRangeStart = width * 0.15; 
     batRangeEnd = width * 0.45;   
     guidePositionX = width * 0.15;
@@ -302,13 +335,12 @@ function initPanels() {
 
   let levelLift = (level - 1) * (height * 0.05);
   
-  // パネル開始位置（左右で反転）
+  // パネル開始位置
   if (isRightHand) {
     panelStartX = width * 0.02; // 左側
   } else {
-    // 右側配置: 全幅 - (パネル全幅 + マージン)
     let totalPanelW = cols * panelW + (cols - 1) * panelGap;
-    panelStartX = width - totalPanelW - width * 0.02; 
+    panelStartX = width - totalPanelW - width * 0.02; // 右側
   }
 
   let totalH = rows * panelH + (rows - 1) * panelGap;
@@ -339,9 +371,6 @@ function draw() {
     let dw, dh, dx, dy;
     if (canvasAspect > imgAspect) { dw=width; dh=width/imgAspect; dx=0; dy=(height-dh)/2; }
     else { dh=height; dw=height*imgAspect; dy=0; dx=(width-dw)/2; }
-    
-    // 背景も左右反転させる？ いや、スタジアムはそのままの方が自然か。
-    // そのまま描画
     image(bgImage, dx, dy, dw, dh);
   }
 
@@ -417,7 +446,6 @@ function drawSetupUI() {
   let uiX = guidePositionX; 
   let uiY = guidePositionY - 280;
   
-  // 文字位置の微調整（左右で変える）
   let textOffset = isRightHand ? -150 : 150;
 
   if (!handDetected) {
@@ -461,7 +489,6 @@ function playGame() {
   push();
   translate(batX, batY);
   
-  // バットの回転方向（左右で逆）
   if (isRightHand) {
     rotate(map(progress, 0, 1, PI/4, -PI/4));
   } else {
@@ -558,7 +585,7 @@ function drawGameUI(progress) {
   text(`Life: ${hearts}${empty}`, 20, 20);
 
   let uiW = 220; 
-  let uiX = width / 2 - uiW / 2; // 中央
+  let uiX = width / 2 - uiW / 2; 
   let uiY = 10; 
   
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
@@ -584,16 +611,11 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
-    this.startX = 0; this.startY = height * 0.85; 
+    this.startX = width / 2; // ボールは常に中央下から
+    this.startY = height; 
     
-    // 左右反転: 左手モードならボールは右下から出る、と見せかけて
-    // 実際は「投げる位置」ではなく「飛んでくる方向」が重要。
-    // シンプルに画面下中央付近から、ガイドに向かって飛ぶようにする。
-    // 右手モード: パネル(左)へ打ち返す -> ボールは右寄りから来ると打ちやすい？
-    // いや、正面からの方が自然。startXは中央でOK。
-    
-    this.x = width / 2; 
-    this.y = height; 
+    this.x = this.startX; 
+    this.y = this.startY; 
 
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
@@ -603,7 +625,7 @@ class Ball {
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
 
-    let dirX = targetX - this.x; let dirY = targetY - this.y;
+    let dirX = targetX - this.startX; let dirY = targetY - this.startY;
     let distLen = sqrt(dirX*dirX + dirY*dirY);
     
     this.vx = (dirX / distLen) * speed; 
@@ -616,28 +638,21 @@ class Ball {
   hit(progress) {
     this.isHit = true; this.ballColor = color(255, 255, 0);
     
-    // 左右でターゲットエリアの方向が変わる
     let areaW = 3 * panels[0].w + 30; 
     let areaLeft, areaRight;
 
     if (isRightHand) {
-      // 右手: パネルは左側
       areaLeft = panelStartX; 
       areaRight = panelStartX + areaW;
     } else {
-      // 左手: パネルは右側
       areaLeft = panelStartX;
       areaRight = panelStartX + areaW;
     }
     
-    // ターゲットX計算（左右共通のロジックでいけるか確認）
-    // 右手(RightHand=true): progress小(右側・遅い) -> Right, progress大(左側・早い) -> Left
-    // 左手(RightHand=false): progress小(左側・遅い) -> Left, progress大(右側・早い) -> Right
     let targetX;
     if (isRightHand) {
         targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
     } else {
-        // 左手は開くと右へ振る
         targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
     }
 
