@@ -3,12 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Ultimate Force</title>
+  <title>Thumb Baseball - Light & Diagnostic</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
     
-    /* オーバーレイ */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -32,18 +31,19 @@
     .btn-container { display: flex; flex-direction: column; gap: 15px; width: 90%; }
 
     .hand-btn {
-      padding: 20px 0; font-size: 22px; font-weight: bold;
+      padding: 20px 0; font-size: 20px; font-weight: bold;
       color: #000; background: #ffff00; border: 3px solid #fff; border-radius: 30px; cursor: pointer;
       box-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
       width: 100%; user-select: none; -webkit-user-select: none;
     }
     .hand-btn:active { background: #cccc00; transform: scale(0.95); }
 
+    /* ステータスログ（エラー確認用） */
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
-      font-size: 16px; background: rgba(0,0,0,0.8); 
+      font-size: 14px; background: rgba(0,0,0,0.8); 
       padding: 10px; border-radius: 5px; width: 100%;
-      min-height: 40px; word-wrap: break-word;
+      min-height: 40px; word-wrap: break-word; text-align: left;
     }
 
     #rawVideo { display: none; }
@@ -55,7 +55,6 @@
   </style>
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/addons/p5.sound.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
@@ -66,39 +65,33 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【遊び方】</strong><br>
-        1. カメラ許可をOKにします。<br>
-        2. 丸いガイドに手首を合わせます。<br>
-        3. <strong>可動域測定</strong> (閉じる→開く)<br>
-        4. ガイド内で親指を開いてスイング！
+        <strong>【軽量モード】</strong><br>
+        1. 手を選んでボタンを押します。<br>
+        2. カメラ許可をOKにします。<br>
+        3. 丸いガイドに手首を合わせます。<br>
+        4. 親指を閉じる→開くで測定！
       </div>
     </div>
 
     <div id="right-panel">
       <h1>Thumb Baseball</h1>
       <div id="btn-group" class="btn-container">
-        <button class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
-        <button class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
+        <button class="hand-btn" onclick="startSystem('right')">右手でプレイ</button>
+        <button class="hand-btn" onclick="startSystem('left')">左手でプレイ</button>
       </div>
-      <div id="statusLog">待機中...ボタンを押してください</div>
+      <div id="statusLog">準備完了。ボタンを押してください。</div>
     </div>
   </div>
 
 <script>
-// --- ボタンクリック時の処理（最優先） ---
-function handleClick(hand) {
-  // 1. UIを強制的に切り替える（反応したことをユーザーに伝える）
-  document.getElementById('btn-group').style.display = 'none';
-  document.getElementById('statusLog').innerText = "システム起動中...";
-  document.getElementById('statusLog').style.color = "yellow";
+// ★エラーを画面に出す設定
+window.onerror = function(message, source, lineno, colno, error) {
+  document.getElementById('statusLog').innerText = "エラー発生: " + message;
+  document.getElementById('statusLog').style.color = "red";
+  alert("エラーが発生しました:\n" + message);
+};
 
-  // 2. 少しだけ待ってから重い処理を開始（UI描画を優先）
-  setTimeout(() => {
-    startSequence(hand);
-  }, 50);
-}
-
-// --- グローバル変数 ---
+// --- 変数 ---
 let rawVideo = document.getElementById('rawVideo');
 let hands = null;
 let camera = null;
@@ -124,11 +117,19 @@ let currentCm = 0;
 
 let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
-let hitSoundOsc, hitSoundEnv; 
+
+// 音声用（Web Audio API）
+let audioCtx = null;
 
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
+
+// ログ出力
+function updateStatus(msg) {
+  const el = document.getElementById('statusLog');
+  if(el) el.innerHTML = msg;
+}
 
 // --- 初期化 ---
 function setup() {
@@ -141,36 +142,69 @@ function setup() {
 }
 
 // --- 起動シーケンス ---
-async function startSequence(hand) {
+async function startSystem(hand) {
   isRightHand = (hand === 'right');
+  
+  // UI更新
+  document.getElementById('btn-group').style.display = 'none';
+  updateStatus("システム起動中...");
+  
+  // 音声初期化 (軽量版)
+  initAudioContext();
+
   updateLayout();
   initPanels();
 
-  // 音声コンテキストの開始（エラーは無視して進む）
-  try {
-    if (typeof getAudioContext === 'function') {
-      getAudioContext().resume();
-    }
-    await userStartAudio();
-    initAudio();
-  } catch(e) { console.log("Audio Error Ignored"); }
-
-  // カメラ起動へ
-  startCameraSystem();
+  // カメラ起動
+  startCamera();
 }
 
-function startCameraSystem() {
-  const logEl = document.getElementById('statusLog');
-  logEl.innerText = "カメラ許可を求めています...";
+function initAudioContext() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    audioCtx = new AudioContext();
+    audioCtx.resume();
+  } catch(e) {
+    console.log("Audio API Error: " + e);
+  }
+}
 
+// カキーン音（軽量版）
+function playHitSound() {
+  if (!audioCtx) return;
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
+  const osc = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+
+  osc.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(100, audioCtx.currentTime + 0.1);
+
+  gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+
+  osc.start();
+  osc.stop(audioCtx.currentTime + 0.1);
+}
+
+function startCamera() {
+  updateStatus("カメラ許可を求めています...");
+  
   const constraints = {
     audio: false,
-    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+    video: { 
+      facingMode: "user", 
+      width: { ideal: 640 }, 
+      height: { ideal: 480 } 
+    }
   };
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert("エラー: このブラウザはカメラに対応していません。");
-    logEl.innerText = "カメラ非対応ブラウザです";
+    alert("このブラウザはカメラに対応していません");
     return;
   }
 
@@ -179,69 +213,51 @@ function startCameraSystem() {
       rawVideo.srcObject = stream;
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
-        logEl.innerText = "AIエンジンを読み込み中...";
+        updateStatus("AI読み込み中...");
         initMediaPipe(); 
       };
     })
     .catch(err => {
-      alert("カメラ起動エラー:\n" + err.name + "\n設定でカメラを許可してください。");
-      logEl.innerText = "カメラエラー: " + err.message;
-      logEl.style.color = "red";
-      document.getElementById('btn-group').style.display = 'flex'; // ボタンを戻す
+      updateStatus("カメラエラー: " + err.name);
+      alert("カメラエラー:\n" + err.message);
+      document.getElementById('btn-group').style.display = 'flex'; // ボタン戻す
     });
 }
 
 function initMediaPipe() {
   if (typeof Hands === 'undefined') {
-    alert("エラー: AIライブラリが読み込めません。インターネット接続を確認してください。");
-    document.getElementById('statusLog').innerText = "AI読込エラー";
+    alert("AIライブラリ読み込み失敗。\n通信環境を確認してリロードしてください。");
     return;
   }
 
-  try {
-    hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
-    hands.setOptions({
-      maxNumHands: 1, 
-      modelComplexity: 0, 
-      minDetectionConfidence: 0.5, 
-      minTrackingConfidence: 0.5
-    });
-    hands.onResults(onResults);
+  hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
+  hands.setOptions({
+    maxNumHands: 1, 
+    modelComplexity: 0, // 最軽量
+    minDetectionConfidence: 0.5, 
+    minTrackingConfidence: 0.5
+  });
+  hands.onResults(onResults);
 
-    camera = new Camera(rawVideo, {
-      onFrame: async () => { 
-        if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
-          await hands.send({image: rawVideo}); 
-        }
-      },
-      width: 640, height: 480
-    });
-    
-    camera.start().then(() => {
-      // 成功！
+  camera = new Camera(rawVideo, {
+    onFrame: async () => { 
+      if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
+        await hands.send({image: rawVideo}); 
+      }
+    },
+    width: 640, height: 480
+  });
+  
+  camera.start().then(() => {
+    updateStatus("準備完了！");
+    setTimeout(() => {
       document.getElementById('overlay').style.display = 'none';
       isGameStarted = true;
-    }).catch(e => {
-      console.log(e);
-      // AI初期化エラーでも、とりあえずゲーム画面には行く（緊急措置）
-      document.getElementById('overlay').style.display = 'none';
-      isGameStarted = true;
-    });
-  } catch(e) {
-    alert("AI初期化エラー: " + e);
-  }
-}
-
-function initAudio() {
-  try {
-    hitSoundEnv = new p5.Envelope();
-    hitSoundEnv.setADSR(0.001, 0.1, 0.2, 0.5); 
-    hitSoundEnv.setRange(0.8, 0); 
-    hitSoundOsc = new p5.Oscillator('triangle'); 
-    hitSoundOsc.amp(hitSoundEnv);
-    hitSoundOsc.freq(800);
-    hitSoundOsc.start(); 
-  } catch(e){}
+    }, 500);
+  }).catch(e => {
+    updateStatus("AI起動エラー: " + e);
+    alert("AI起動エラー: " + e);
+  });
 }
 
 function onResults(results) {
@@ -495,12 +511,6 @@ function playGame() {
 
 function checkLevelUp() {
   if (score > 0 && score % 10 === 0) { level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0)); }
-}
-
-function playHitSound() {
-  if (hitSoundEnv && hitSoundOsc) {
-    hitSoundOsc.freq(800); hitSoundEnv.play(); setTimeout(() => { hitSoundOsc.freq(1200); }, 30);
-  }
 }
 
 function drawGameUI(progress) {
