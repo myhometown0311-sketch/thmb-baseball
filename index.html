@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Aim & Control</title>
+  <title>Thumb Baseball - Home Base Zone</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
@@ -78,6 +78,11 @@ let hitSoundOsc, hitSoundEnv;
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
+
+// ホームベースのサイズ定義
+const HB_WIDTH = 140;
+const HB_HEIGHT_RECT = 80;
+const HB_HEIGHT_TRI = 70;
 
 function log(msg) {
   const el = document.getElementById('debugLog');
@@ -244,15 +249,12 @@ function initPanels() {
   let panelH = basePanelH * shrinkRate;
   let panelGap = 15 + (1 - shrinkRate) * 20;
 
-  // ４．レベルアップにつれてパネル位置を上に移動させる
-  // 初期位置は画面下部。レベルごとに 5% ずつ上昇。
   let levelLift = (level - 1) * (height * 0.05);
   
   panelStartX = width * 0.02; 
   let totalH = rows * panelH + (rows - 1) * panelGap;
   let panelStartY = (height - totalH - height * 0.05) - levelLift; 
 
-  // 画面外に出ないように制限
   if (panelStartY < height * 0.1) panelStartY = height * 0.1;
 
   for (let r = 0; r < rows; r++) {
@@ -333,8 +335,21 @@ function drawAlwaysGuide() {
   } else {
     stroke(255, 0, 0); noFill();
   }
-  strokeWeight(4); ellipse(centerX, centerY, 100, 100);
-  strokeWeight(2); rectMode(CENTER); rect(centerX, centerY - 150, 300, 400, 20);
+  strokeWeight(4); 
+
+  // １．ホームベース型の描画
+  push();
+  translate(centerX, centerY);
+  beginShape();
+  vertex(-HB_WIDTH / 2, -HB_HEIGHT_RECT / 2); // 左上
+  vertex(HB_WIDTH / 2, -HB_HEIGHT_RECT / 2);  // 右上
+  vertex(HB_WIDTH / 2, HB_HEIGHT_RECT / 2);   // 右下
+  vertex(0, HB_HEIGHT_RECT / 2 + HB_HEIGHT_TRI); // 下の尖った点
+  vertex(-HB_WIDTH / 2, HB_HEIGHT_RECT / 2);  // 左下
+  endShape(CLOSE);
+  pop();
+
+  strokeWeight(2); rect(centerX, centerY - 150, 350, 450, 20);
 }
 
 function checkHandStability() {
@@ -347,11 +362,11 @@ function checkHandStability() {
 function drawSetupUI() {
   textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
   let uiX = guidePositionX; 
-  let uiY = guidePositionY - 250;
+  let uiY = guidePositionY - 280;
   if (!handDetected) return;
 
-  if (gameState === 1) text("【STEP 1】\n手首を丸に合わせ\n親指を閉じてタップ", uiX - 100, uiY);
-  else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 100, uiY);
+  if (gameState === 1) text("【STEP 1】\n手首をホームベースに合わせ\n親指を閉じてタップ", uiX - 120, uiY);
+  else if (gameState === 2) text("【STEP 2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 120, uiY);
 }
 
 function drawErrorScreen() {
@@ -379,8 +394,6 @@ function playGame() {
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
-  // １．「バットにしっかり当たるまで反応しない」
-  // 25%未満はスイングとみなさない（誤作動防止）
   let isBatActive = (progress >= 0.25); 
   
   let batBaseLen = 140;
@@ -410,7 +423,6 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // １．しっかり当たるまで反応しない（距離判定をシビアに：50px）
     let hitThreshold = 50; 
     
     if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < hitThreshold) {
@@ -485,14 +497,15 @@ class Ball {
     this.startX = 0; this.startY = height * 0.85; 
     this.x = this.startX; this.y = this.startY;
 
-    // ３．ボールの速度を落とす
-    // 初期値を6〜8程度に設定 (以前は10〜)
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
 
-    let targetProgress = random(0.0, 1.0); 
-    let targetX = map(targetProgress, 0, 1, batRangeStart, batRangeEnd);
-    let targetY = height * 0.75;
+    // １．ホームベースの範囲内だけボールが通るように制限
+    let homeBaseCenterX = guidePositionX;
+    // ターゲットXをホームベースの幅の範囲内に設定
+    let targetX = random(homeBaseCenterX - HB_WIDTH/2, homeBaseCenterX + HB_WIDTH/2);
+    let targetY = guidePositionY - 50; // ストライクゾーン付近
+
     let dirX = targetX - this.startX; let dirY = targetY - this.startY;
     let distLen = sqrt(dirX*dirX + dirY*dirY);
     
@@ -506,25 +519,13 @@ class Ball {
   hit(progress) {
     this.isHit = true; this.ballColor = color(255, 255, 0);
     
-    // ２．親指の動かす範囲でパネルの上段・中段・下段をコントロール
-    // progress: 0.3(閉じ気味) -> 1.0(全開)
-    
-    // 左右位置（タイミング）: 早く振る(Left) 〜 遅く振る(Right)
     let areaW = 3 * panels[0].w + 30; 
     let areaLeft = panelStartX; 
     let areaRight = panelStartX + areaW;
     let targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
 
-    // 上下位置（開き具合）:
-    // 全開(1.0) -> 上段パネル(top)
-    // 半分(0.6) -> 中段パネル
-    // ちょい開け(0.3) -> 下段パネル
-    
     let areaTop = panels[0].y; 
     let areaBottom = panels[8].y + panels[8].h;
-    
-    // 開き具合(progress)を、下段〜上段にマッピング
-    // 0.3 -> areaBottom, 1.0 -> areaTop
     let targetY = map(progress, 0.3, 1.0, areaBottom, areaTop);
 
     let dx = targetX - this.x; let dy = targetY - this.y;
