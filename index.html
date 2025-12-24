@@ -3,11 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Emergency Fix</title>
+  <title>Thumb Baseball - Ultimate Force</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
     
+    /* オーバーレイ */
     #overlay {
       position: absolute; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -31,18 +32,18 @@
     .btn-container { display: flex; flex-direction: column; gap: 15px; width: 90%; }
 
     .hand-btn {
-      padding: 15px 0; font-size: 20px; font-weight: bold;
+      padding: 20px 0; font-size: 22px; font-weight: bold;
       color: #000; background: #ffff00; border: 3px solid #fff; border-radius: 30px; cursor: pointer;
       box-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
-      width: 100%; user-select: none;
+      width: 100%; user-select: none; -webkit-user-select: none;
     }
     .hand-btn:active { background: #cccc00; transform: scale(0.95); }
 
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
-      font-size: 14px; background: rgba(0,0,0,0.8); 
+      font-size: 16px; background: rgba(0,0,0,0.8); 
       padding: 10px; border-radius: 5px; width: 100%;
-      min-height: 30px; word-wrap: break-word;
+      min-height: 40px; word-wrap: break-word;
     }
 
     #rawVideo { display: none; }
@@ -76,14 +77,27 @@
     <div id="right-panel">
       <h1>Thumb Baseball</h1>
       <div id="btn-group" class="btn-container">
-        <button class="hand-btn" onclick="forceStart('right')">右手でプレイ</button>
-        <button class="hand-btn" onclick="forceStart('left')">左手でプレイ</button>
+        <button class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
+        <button class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
       </div>
       <div id="statusLog">待機中...ボタンを押してください</div>
     </div>
   </div>
 
 <script>
+// --- ボタンクリック時の処理（最優先） ---
+function handleClick(hand) {
+  // 1. UIを強制的に切り替える（反応したことをユーザーに伝える）
+  document.getElementById('btn-group').style.display = 'none';
+  document.getElementById('statusLog').innerText = "システム起動中...";
+  document.getElementById('statusLog').style.color = "yellow";
+
+  // 2. 少しだけ待ってから重い処理を開始（UI描画を優先）
+  setTimeout(() => {
+    startSequence(hand);
+  }, 50);
+}
+
 // --- グローバル変数 ---
 let rawVideo = document.getElementById('rawVideo');
 let hands = null;
@@ -116,13 +130,6 @@ let batRangeStart, batRangeEnd;
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
 
-// ログ出力
-function updateStatus(msg) {
-  const el = document.getElementById('statusLog');
-  if(el) el.innerHTML = msg;
-  console.log(msg);
-}
-
 // --- 初期化 ---
 function setup() {
   pixelDensity(1);
@@ -133,83 +140,96 @@ function setup() {
   initPanels();
 }
 
-// --- 強制スタート処理 ---
-async function forceStart(hand) {
-  // 1. UI即時反応
-  document.getElementById('btn-group').style.display = 'none';
-  updateStatus("起動を開始しました...");
-  
+// --- 起動シーケンス ---
+async function startSequence(hand) {
   isRightHand = (hand === 'right');
   updateLayout();
   initPanels();
 
-  // 2. 音声コンテキスト (エラー無視で進める)
+  // 音声コンテキストの開始（エラーは無視して進む）
   try {
     if (typeof getAudioContext === 'function') {
       getAudioContext().resume();
     }
+    await userStartAudio();
     initAudio();
-  } catch(e) { console.log(e); }
+  } catch(e) { console.log("Audio Error Ignored"); }
 
-  // 3. カメラ起動
-  updateStatus("カメラ許可を求めています...");
-  
+  // カメラ起動へ
+  startCameraSystem();
+}
+
+function startCameraSystem() {
+  const logEl = document.getElementById('statusLog');
+  logEl.innerText = "カメラ許可を求めています...";
+
   const constraints = {
     audio: false,
     video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
   };
 
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    rawVideo.srcObject = stream;
-    
-    // 映像再生開始
-    rawVideo.onloadedmetadata = () => {
-      rawVideo.play();
-      updateStatus("AIを準備中...");
-      startAI();
-    };
-  } catch (err) {
-    updateStatus("カメラエラー: " + err.name + "<br>設定を確認してください");
-    alert("カメラが起動できませんでした。\nブラウザの設定を確認してください。");
-    // ボタン戻す
-    document.getElementById('btn-group').style.display = 'flex';
-  }
-}
-
-function startAI() {
-  if (typeof Hands === 'undefined') {
-    updateStatus("エラー: AIライブラリ未ロード。<br>ネット接続を確認してください。");
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert("エラー: このブラウザはカメラに対応していません。");
+    logEl.innerText = "カメラ非対応ブラウザです";
     return;
   }
 
-  hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
-  hands.setOptions({
-    maxNumHands: 1, 
-    modelComplexity: 0, // Lite
-    minDetectionConfidence: 0.5, 
-    minTrackingConfidence: 0.5
-  });
-  
-  hands.onResults(onResults);
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then(stream => {
+      rawVideo.srcObject = stream;
+      rawVideo.onloadedmetadata = () => {
+        rawVideo.play();
+        logEl.innerText = "AIエンジンを読み込み中...";
+        initMediaPipe(); 
+      };
+    })
+    .catch(err => {
+      alert("カメラ起動エラー:\n" + err.name + "\n設定でカメラを許可してください。");
+      logEl.innerText = "カメラエラー: " + err.message;
+      logEl.style.color = "red";
+      document.getElementById('btn-group').style.display = 'flex'; // ボタンを戻す
+    });
+}
 
-  // カメラループ開始
-  camera = new Camera(rawVideo, {
-    onFrame: async () => { 
-      if(rawVideo.videoWidth > 0) await hands.send({image: rawVideo}); 
-    },
-    width: 640, height: 480
-  });
-  
-  camera.start().then(() => {
-    updateStatus("準備完了！");
-    setTimeout(() => {
+function initMediaPipe() {
+  if (typeof Hands === 'undefined') {
+    alert("エラー: AIライブラリが読み込めません。インターネット接続を確認してください。");
+    document.getElementById('statusLog').innerText = "AI読込エラー";
+    return;
+  }
+
+  try {
+    hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
+    hands.setOptions({
+      maxNumHands: 1, 
+      modelComplexity: 0, 
+      minDetectionConfidence: 0.5, 
+      minTrackingConfidence: 0.5
+    });
+    hands.onResults(onResults);
+
+    camera = new Camera(rawVideo, {
+      onFrame: async () => { 
+        if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
+          await hands.send({image: rawVideo}); 
+        }
+      },
+      width: 640, height: 480
+    });
+    
+    camera.start().then(() => {
+      // 成功！
       document.getElementById('overlay').style.display = 'none';
       isGameStarted = true;
-    }, 500);
-  }).catch(e => {
-    updateStatus("AIエラー: " + e);
-  });
+    }).catch(e => {
+      console.log(e);
+      // AI初期化エラーでも、とりあえずゲーム画面には行く（緊急措置）
+      document.getElementById('overlay').style.display = 'none';
+      isGameStarted = true;
+    });
+  } catch(e) {
+    alert("AI初期化エラー: " + e);
+  }
 }
 
 function initAudio() {
@@ -515,27 +535,17 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
-    // 修正：左右モードに合わせて出現位置を変える
-    // 右手モード(パネル左) -> 左側(width*0.1)から
-    // 左手モード(パネル右) -> 右側(width*0.9)から
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
-    this.startY = height * 0.6; // 少し上から
-    
-    this.x = this.startX; 
-    this.y = this.startY; 
-
+    this.startY = height * 0.6; 
+    this.x = this.startX; this.y = this.startY; 
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
-
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
-
     let dirX = targetX - this.startX; let dirY = targetY - this.startY;
     let distLen = sqrt(dirX*dirX + dirY*dirY);
-    
-    this.vx = (dirX / distLen) * speed; 
-    this.vy = (dirY / distLen) * speed;
+    this.vx = (dirX / distLen) * speed; this.vy = (dirY / distLen) * speed;
     this.isHit = false; this.ballColor = color(255);
   }
   update() { this.x += this.vx; this.y += this.vy; if (this.isHit) this.vy += 0.2; }
@@ -546,14 +556,11 @@ class Ball {
     let areaLeft, areaRight;
     if (isRightHand) { areaLeft = panelStartX; areaRight = panelStartX + areaW; } 
     else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
-    
     let targetX;
     if (isRightHand) targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
     else targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
-    
     let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
     let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
-    
     let dx = targetX - this.x; let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
     let flySpeed = 30; 
