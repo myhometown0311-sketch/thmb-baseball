@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - HomeBase Fix</title>
+  <title>Thumb Baseball - Easy Mode</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
@@ -78,10 +78,6 @@ let hitSoundOsc, hitSoundEnv;
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
-
-// ホームベースサイズ
-const HB_WIDTH = 120;
-const HB_HEIGHT = 120;
 
 function log(msg) {
   const el = document.getElementById('debugLog');
@@ -338,23 +334,8 @@ function drawAlwaysGuide() {
   }
   
   strokeWeight(4); 
-  
-  // １．左向きホームベースの描画
-  push();
-  translate(centerX, centerY);
-  beginShape();
-  // 頂点（左側・ピッチャー方向）
-  vertex(-HB_WIDTH/2, 0); 
-  // 左上
-  vertex(0, -HB_HEIGHT/2);
-  // 右上
-  vertex(HB_WIDTH/2, -HB_HEIGHT/2);
-  // 右下
-  vertex(HB_WIDTH/2, HB_HEIGHT/2);
-  // 左下
-  vertex(0, HB_HEIGHT/2);
-  endShape(CLOSE);
-  pop();
+  // 1. ホームベース削除 -> 丸いガイドのみにする
+  ellipse(centerX, centerY, 120, 120);
 
   strokeWeight(2); rect(centerX, centerY - 150, 350, 450, 20);
 }
@@ -375,7 +356,8 @@ function drawSetupUI() {
     return;
   }
 
-  if (gameState === 1) text("【可動域測定 1/2】\n手首をホームベースに合わせ\n親指を閉じてタップ", uiX - 120, uiY);
+  // テキストもホームベースから「丸」へ変更
+  if (gameState === 1) text("【可動域測定 1/2】\n手首を丸に合わせて\n親指を閉じてタップ", uiX - 120, uiY);
   else if (gameState === 2) text("【可動域測定 2/2】\n手首を動かさずに！\n親指を全開にしてタップ", uiX - 120, uiY);
 }
 
@@ -384,7 +366,7 @@ function drawErrorScreen() {
   textAlign(CENTER, CENTER); textSize(40); fill(255, 50, 50); stroke(255); strokeWeight(5);
   text("手が動きました！", width/2, height/2 - 50);
   textSize(24); fill(255); noStroke();
-  text("ホームベースの位置に戻してください。\n画面タップでリセット", width/2, height/2 + 50);
+  text("手首を丸の位置に戻してください。\n画面タップでリセット", width/2, height/2 + 50);
 }
 
 function drawGameOverScreen() {
@@ -433,7 +415,6 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // 当たり判定：巨大化
     let hitThreshold = 300; 
     
     if (isBatActive && !b.isHit && dist(b.x, b.y, batX, batY) < hitThreshold) {
@@ -511,13 +492,12 @@ class Ball {
     this.startX = 0; this.startY = height * 0.85; 
     this.x = this.startX; this.y = this.startY;
 
-    // ボールは遅め
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
 
-    // ホームベース範囲内を狙う（幅の少し内側）
     let homeBaseCenterX = guidePositionX;
-    let targetX = random(homeBaseCenterX - HB_WIDTH/3, homeBaseCenterX + HB_WIDTH/3);
+    // 丸ガイドの幅の中に飛ばす
+    let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
 
     let dirX = targetX - this.startX; let dirY = targetY - this.startY;
@@ -537,16 +517,16 @@ class Ball {
     let areaLeft = panelStartX; 
     let areaRight = panelStartX + areaW;
     
-    // 左右(X): タイミング重視
     let targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
 
     let areaTop = panels[0].y; 
     let areaBottom = panels[8].y + panels[8].h;
     
-    // ２．流し打ち（少し開いた状態）でも上段に飛ぶように調整
-    // 0.3(開け始め) -> 下段
-    // 0.8(80%開)   -> 上段
-    let targetY = map(progress, 0.3, 0.80, areaBottom, areaTop - 30); 
+    // 2. 上段に当たりやすくする調整（超・優しめ設定）
+    // 0.3(開き始め) -> 下段
+    // 0.6(6割開き)  -> 上段
+    // clampを使い、0.6以上開けばずっと上段に飛ぶようにする
+    let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
 
     let dx = targetX - this.x; let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
