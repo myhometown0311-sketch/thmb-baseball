@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Combo & Zone</title>
+  <title>Thumb Baseball - Final Tuning</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 1; }
@@ -70,7 +70,7 @@ let score = 0;
 let level = 1; 
 let maxLives = 3;
 let lives = maxLives;
-let combo = 0; // ２．コンボカウント用
+let combo = 0;
 
 let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
@@ -213,7 +213,7 @@ function resetGame() {
   score = 0;
   level = 1;
   lives = maxLives;
-  combo = 0; // コンボリセット
+  combo = 0;
   fixedWristPosition = null;
   initPanels();
 }
@@ -239,9 +239,7 @@ function initPanels() {
   panels = [];
   let cols = 3; 
   let rows = 3;
-  // ３．パネル縮小ロジック (確認済み: レベル毎に10%小さくなる)
   let shrinkRate = constrain(1.0 - (level - 1) * 0.1, 0.5, 1.0);
-  
   let basePanelW = width * 0.06;
   let basePanelH = height * 0.10;
   let panelW = basePanelW * shrinkRate;
@@ -336,7 +334,7 @@ function drawAlwaysGuide() {
   }
   
   strokeWeight(4); 
-  ellipse(centerX, centerY, 120, 120); // 丸いガイド
+  ellipse(centerX, centerY, 120, 120); 
   strokeWeight(2); rect(centerX, centerY - 150, 350, 450, 20);
 }
 
@@ -414,14 +412,12 @@ function playGame() {
     let b = balls[i];
     b.update(); b.display();
     
-    // １．丸ガイド内で振った時だけ当たるようにする
-    // ボールとガイド中心の距離を測る
+    // ガイド内で振ったか
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    let inZone = (distToGuide < 100); // 半径60pxより少し広め
+    let inZone = (distToGuide < 100); 
 
     let hitThreshold = 300; 
     
-    // inZoneの条件を追加
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
       playHitSound();
       b.hit(progress); 
@@ -432,9 +428,10 @@ function playGame() {
         if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
           p.active = false; score++; 
           
-          // ２．コンボ処理
           combo++;
-          if (combo > 30) showMessage("大谷翔平かよ❗️👍️", color(255, 0, 255));
+          // ２．コンボメッセージの追加 (40回超え)
+          if (combo > 40) showMessage("最高かよっ❗️", color(255, 50, 50));
+          else if (combo > 30) showMessage("大谷翔平かよ❗️👍️", color(255, 0, 255));
           else if (combo > 20) showMessage("最高にイイじゃん！👍️", color(255, 100, 0));
           else if (combo > 10) showMessage("めっちゃイイじゃん❗️👍️", color(255, 255, 0));
           else showMessage("イイじゃん！👍️", color(255, 255, 0));
@@ -448,7 +445,7 @@ function playGame() {
     if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) {
       if (!b.isHit) {
         lives--; 
-        combo = 0; // ミスでコンボリセット
+        combo = 0; 
         showMessage("MISS!", color(100, 100, 255));
         if (lives <= 0) gameState = 5;
       }
@@ -476,7 +473,6 @@ function drawGameUI(progress) {
   textAlign(RIGHT, TOP); textSize(32); 
   text(`打点: ${score}`, width - 20, 20); text(`Lv.${level}`, width - 20, 60);
 
-  // コンボ表示
   if (combo > 1) {
     fill(255, 200, 0); textSize(40);
     text(`${combo} COMBO!`, width - 20, 110);
@@ -486,7 +482,11 @@ function drawGameUI(progress) {
   let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
   text(`Life: ${hearts}${empty}`, 20, 20);
 
-  let uiW = 220; let uiX = width - uiW - 20; let uiY = 160;
+  // １．可動域表示を画面中央上へ
+  let uiW = 220; 
+  let uiX = width / 2 - uiW / 2; // 中央
+  let uiY = 10; // 上部
+  
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
   
   fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
@@ -517,7 +517,6 @@ class Ball {
     let speed = random(baseSpeed, baseSpeed + 2); 
 
     let homeBaseCenterX = guidePositionX;
-    // ガイドの幅の中に飛ばす
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
 
@@ -543,7 +542,7 @@ class Ball {
     let areaTop = panels[0].y; 
     let areaBottom = panels[8].y + panels[8].h;
     
-    // 超優しめ設定: 0.6以上開けば上段ホームラン
+    // 超優しめ設定
     let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
 
     let dx = targetX - this.x; let dy = targetY - this.y;
