@@ -3,13 +3,12 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - High Response</title>
+  <title>Thumb Baseball - Fixed Logic</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
-    /* 操作盤 */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -42,7 +41,6 @@
     }
     .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
     
-    /* ログ */
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
       font-size: 14px; background: #222; border: 1px solid #555;
@@ -50,15 +48,12 @@
       min-height: 40px; word-wrap: break-word; text-align: left;
     }
 
-    /* 反転ボタン */
-    #invertBtn {
-      display: none; position: absolute; top: 10px; left: 10px;
-      padding: 10px 20px; font-size: 16px; font-weight: bold;
-      background: #ff5555; color: white; border: 2px solid white; border-radius: 50px;
-      z-index: 2000; cursor: pointer;
-    }
-
     #rawVideo { display: none; }
+
+    @media (orientation: portrait) {
+      #overlay { flex-direction: column; }
+      #left-panel, #right-panel { width: 90%; }
+    }
   </style>
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
@@ -68,18 +63,18 @@
 <body>
 
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
-  <button id="invertBtn" onclick="toggleInvert()">🔄 動きを反転</button>
 
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【手順】</strong><br>
+        <strong>【設定手順】</strong><br>
         1. 手を選んでボタンをタップ<br>
-        2. カメラ許可後、親指を閉じてタップ<br>
-        3. 親指を開いてタップ<br>
-        ➜ <strong>即ゲーム開始！</strong><br>
+        2. 親指を<strong>閉じて</strong>タップ<br>
+        3. 親指を<strong>開いて</strong>タップ<br>
         <br>
-        ※動きが逆なら左上のボタンで反転
+        ※閉じる＝止まる<br>
+        ※開く＝振る<br>
+        になるよう自動補正されます。
       </div>
     </div>
 
@@ -108,11 +103,12 @@ let isGameStarted = false;
 let isRightHand = true; 
 
 let gameState = 1; 
-let angleClosed = 0, angleOpen = 0, currentAngle = 0;
+let tempAngle1 = 0, tempAngle2 = 0; // 一時保存用
+let angleMin = 0, angleMax = 0;     // 確定した最小・最大角度
+let currentAngle = 0;
 let smoothedAngle = 0; 
 let currentCm = 0; 
 let fixedWristPosition = null; 
-const ALLOWED_MOVEMENT_RADIUS = 120;
 
 let balls = [];
 let panels = []; 
@@ -125,7 +121,6 @@ let combo = 0;
 let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
 let audioCtx = null;
-let isInverted = false;
 
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
@@ -150,13 +145,6 @@ function handleClick(hand) {
   document.getElementById('btn-group').style.display = 'none';
   log("起動中...カメラを許可してください");
   setTimeout(() => { startSequence(hand); }, 100);
-}
-
-function toggleInvert() {
-  isInverted = !isInverted;
-  const btn = document.getElementById('invertBtn');
-  btn.style.background = isInverted ? "#5555ff" : "#ff5555";
-  btn.innerText = isInverted ? "🔄 現在:反転中" : "🔄 動きを反転";
 }
 
 async function startSequence(hand) {
@@ -222,7 +210,6 @@ function initMediaPipe() {
     log("完了！ゲーム画面へ...");
     setTimeout(() => {
       document.getElementById('overlay').style.display = 'none';
-      document.getElementById('invertBtn').style.display = 'block';
       isGameStarted = true;
     }, 500);
   });
@@ -278,7 +265,7 @@ function draw() {
   drawAlwaysGuide();
 
   if (gameState === 3) {
-    // プレイ中
+    checkHandStability();
     playGame();
   } else if (gameState === 4) {
     drawErrorScreen();
@@ -291,43 +278,49 @@ function draw() {
 
 function handleInput() {
   if (gameState === 5 || gameState === 4) return;
+  
   if (handDetected) {
     if (gameState === 1) { 
-        angleClosed = smoothedAngle; 
-        gameState = 2; // 次へ
+        tempAngle1 = smoothedAngle; 
+        gameState = 2; 
     } else if (gameState === 2) { 
-        angleOpen = smoothedAngle;
-        let diff = abs(angleOpen - angleClosed);
+        tempAngle2 = smoothedAngle;
         
-        // 差が小さくても警告せず、とりあえず始める（ユーザー体験優先）
-        fixedWristPosition = createVector(wrist.x, wrist.y);
-        gameState = 3; // 即ゲーム開始！
-        showMessage("START!", color(255, 255, 0));
+        // ★自動補正ロジック★
+        // どっちが先に入力されても、小さい方を「閉(0%)」、大きい方を「開(100%)」にする
+        angleMin = min(tempAngle1, tempAngle2);
+        angleMax = max(tempAngle1, tempAngle2);
+        
+        let diff = angleMax - angleMin;
+        // 差があまりに小さい場合は警告
+        if (diff < 0.05) {
+            showMessage("可動域が小さすぎます！\n測定し直してください", color(255, 50, 50));
+            gameState = 1;
+        } else {
+            fixedWristPosition = createVector(wrist.x, wrist.y);
+            gameState = 3; // ゲーム開始
+            showMessage("GAME START!", color(255, 255, 0));
+        }
     }
   }
 }
 
 function touchStarted() { 
   if (!isGameStarted) return true; 
-  // 画面タップで計測を進める
-  if (gameState === 1 || gameState === 2) {
-      handleInput();
-  }
   if (gameState === 5 || gameState === 4) resetGame();
+  handleInput(); // タップで測定を進める
   return false; 
 }
 function mousePressed() { 
   if (!isGameStarted) return true;
-  if (gameState === 1 || gameState === 2) {
-      handleInput();
-  }
   if (gameState === 5 || gameState === 4) resetGame();
+  handleInput();
 }
 
 function resetGame() {
   gameState = 1; balls = []; score = 0; level = 1; lives = maxLives; combo = 0;
   fixedWristPosition = null; initPanels();
-  angleClosed = 0; angleOpen = 0; smoothedAngle = 0;
+  angleMin = 0; angleMax = 0; smoothedAngle = 0;
 }
 
 function windowResized() {
@@ -401,9 +394,7 @@ function drawAlwaysGuide() {
   let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
   let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
   if (handDetected) {
-    stroke(0, 255, 0); 
-    // 測定中だけ色付け
-    if (gameState < 3) fill(0, 255, 0, 50);
+    stroke(0, 255, 0); if (gameState < 3) fill(0, 255, 0, 50);
   } else {
     stroke(255, 0, 0); noFill();
   }
@@ -412,12 +403,10 @@ function drawAlwaysGuide() {
 }
 
 function checkHandStability() {
-  // ゲーム中は手を多少動かしてもOKにする（感度優先）
   if (!wrist || !fixedWristPosition) return;
-  // 許容範囲を大幅に拡大 (120 -> 200)
+  // 判定を緩くして継続しやすくする
   if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > 200) {
-    // 警告は出すが止めない
-    // gameState = 4; 
+    // gameState = 4; // 厳しすぎるので一旦無効化
   }
 }
 
@@ -438,9 +427,9 @@ function drawSetupUI() {
 function drawErrorScreen() {
   fill(0, 150); rect(0, 0, width, height);
   textAlign(CENTER, CENTER); textSize(40); fill(255, 50, 50); stroke(255); strokeWeight(5);
-  text("手が動きすぎです！", width/2, height/2 - 50);
+  text("手が動きました！", width/2, height/2 - 50);
   textSize(24); fill(255); noStroke();
-  text("手首を固定してください。\n画面タップで再開", width/2, height/2 + 50);
+  text("手首を丸の位置に戻してください。\n画面タップでリセット", width/2, height/2 + 50);
 }
 
 function drawGameOverScreen() {
@@ -454,39 +443,45 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
-  let progress = constrain(rawProgress, 0, 1);
-
-  if (isInverted) {
-    progress = 1.0 - progress;
-  }
-  
-  // ★感度向上：遊びを極限まで減らす (0.05以上で反応)
-  let isBatActive = (progress >= 0.05); 
+  // ★強制補正：angleMin（閉）〜 angleMax（開）の範囲でマッピング
+  let progress = map(smoothedAngle, angleMin, angleMax, 0, 1);
+  progress = constrain(progress, 0, 1);
   
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
+  // 5%以上で動く
+  let isBatActive = (progress >= 0.05); 
+  
   let batBaseLen = 140;
   let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
-  if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
-  else rotate(map(progress, 0, 1, -PI/4, PI/4));
+  
+  // ★角度の修正（バットが上を向くように）
+  // 閉(0%) -> 45度(後方)
+  // 開(100%) -> -45度(前方)
+  let rot = 0;
+  if (isRightHand) rot = map(progress, 0, 1, PI/4, -PI/4);
+  else rot = map(progress, 0, 1, -PI/4, PI/4);
+  rotate(rot);
   
   if (isBatActive) { 
     fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0); 
   } else { 
     fill(100, 150); noStroke(); 
   }
-  rect(-15, 0, 30, 140, 10); 
+  
+  // バットを上向きに描画 (-y方向)
+  rect(-15, -batLen, 30, batLen, 10);
   
   if (!isBatActive) { 
     fill(255); textSize(20); textAlign(CENTER); noStroke(); 
-    rotate(isRightHand ? -PI/4 : PI/4); 
+    // 文字を読みやすく回転キャンセル
+    rotate(-rot);
     text("WAIT", 0, -30); 
   }
   pop();
@@ -496,11 +491,15 @@ function playGame() {
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i]; b.update(); b.display();
     
-    // ★感度向上：当たり判定を大幅拡大 (100 -> 150, threshold -> 400)
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    let inZone = (distToGuide < 150); 
+    let inZone = (distToGuide < 200); 
     let hitThreshold = 400; 
     
+    // バットの先端付近の判定を強化
+    let batTipX = batX + cos(rot - PI/2) * batLen;
+    let batTipY = batY + sin(rot - PI/2) * batLen;
+    let distToBat = dist(b.x, b.y, batTipX, batTipY);
+
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
       playHitSound(); b.hit(progress); 
     }
@@ -620,3 +619,4 @@ class Ball {
 </script>
 </body>
 </html>
+
