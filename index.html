@@ -3,12 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Visibility Fix</title>
+  <title>Thumb Baseball - Reversible</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
+    /* 操作盤 */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -21,7 +22,7 @@
     #left-panel { width: 45%; padding: 10px; display: flex; justify-content: center; }
     #instruction {
       background: rgba(255, 255, 255, 0.15);
-      border: 2px solid #00ff00;
+      border: 1px solid #777;
       border-radius: 8px; padding: 15px;
       font-size: 13px; line-height: 1.6; color: white;
       text-align: left; width: 100%;
@@ -41,12 +42,20 @@
     }
     .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
     
-    /* リアルタイム数値表示 */
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
       font-size: 14px; background: #222; border: 1px solid #555;
       padding: 10px; border-radius: 5px; width: 100%;
       min-height: 40px; word-wrap: break-word; text-align: left;
+    }
+
+    /* ゲーム中の反転ボタン */
+    #invertBtn {
+      display: none; /* ゲーム開始後に表示 */
+      position: absolute; top: 10px; left: 10px;
+      padding: 10px 20px; font-size: 16px; font-weight: bold;
+      background: #ff5555; color: white; border: 2px solid white; border-radius: 50px;
+      z-index: 2000; cursor: pointer;
     }
 
     #rawVideo { display: none; }
@@ -60,26 +69,26 @@
 
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
 
+  <button id="invertBtn" onclick="toggleInvert()">🔄 動きを反転</button>
+
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【設定のコツ】</strong><br>
-        1. 手を選んでボタンを押す<br>
-        2. カメラ許可後、赤い線が出るか確認<br>
-        3. <strong>測定①</strong>：親指を閉じる<br>
-        4. <strong>測定②</strong>：親指を大きく開く<br>
-        <br>
-        ※差が小さいと警告が出ます
+        <strong>【トラブル解決】</strong><br>
+        動きが逆になる場合は<br>
+        ゲーム画面左上の<br>
+        <strong>「🔄 動きを反転」</strong><br>
+        ボタンを押してください。
       </div>
     </div>
 
     <div id="right-panel">
       <h1>Thumb Baseball</h1>
       <div id="btn-group" class="btn-container">
-        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手</button>
-        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手</button>
+        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
+        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
       </div>
-      <div id="statusLog">準備完了。<br>ボタンを押してください。</div>
+      <div id="statusLog">準備完了。ボタンを押してください。</div>
     </div>
   </div>
 
@@ -116,6 +125,9 @@ let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
 let audioCtx = null;
 
+// 反転フラグ
+let isInverted = false;
+
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
@@ -139,6 +151,15 @@ function handleClick(hand) {
   document.getElementById('btn-group').style.display = 'none';
   log("起動中...カメラを許可してください");
   setTimeout(() => { startSequence(hand); }, 100);
+}
+
+// 反転ボタンの処理
+function toggleInvert() {
+  isInverted = !isInverted;
+  // ボタンの色を変えてフィードバック
+  const btn = document.getElementById('invertBtn');
+  btn.style.background = isInverted ? "#5555ff" : "#ff5555";
+  btn.innerText = isInverted ? "🔄 現在:反転中" : "🔄 動きを反転";
 }
 
 async function startSequence(hand) {
@@ -204,6 +225,7 @@ function initMediaPipe() {
     log("完了！ゲーム画面へ...");
     setTimeout(() => {
       document.getElementById('overlay').style.display = 'none';
+      document.getElementById('invertBtn').style.display = 'block'; // 反転ボタン表示
       isGameStarted = true;
     }, 500);
   });
@@ -216,12 +238,13 @@ function onResults(results) {
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    
     let v1 = p5.Vector.sub(indexBase, wrist);
     let v2 = p5.Vector.sub(thumbTip, wrist);
     let rawAngle = v1.angleBetween(v2);
     
     if (smoothedAngle === 0) smoothedAngle = rawAngle;
-    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.3); // 反応速度UP
+    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.3); 
   } else {
     handDetected = false;
   }
@@ -245,16 +268,6 @@ function draw() {
     translate(width, 0); scale(-1, 1); tint(255, 120);
     drawingContext.drawImage(rawVideo, 0, 0, width, height);
     pop();
-  }
-
-  // 骨組み描画（デバッグ用）
-  if (handDetected && wrist && thumbTip && indexBase) {
-    stroke(255, 0, 0); strokeWeight(3); noFill();
-    line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
-    line(wrist.x, wrist.y, indexBase.x, indexBase.y);
-    fill(0, 255, 0); noStroke();
-    ellipse(thumbTip.x, thumbTip.y, 10, 10);
-    ellipse(wrist.x, wrist.y, 10, 10);
   }
 
   handleInput();
@@ -281,12 +294,10 @@ function handleInput() {
         gameState = 2; 
     } else if (gameState === 2) { 
         angleOpen = smoothedAngle;
-        
-        // ★修正: 差分チェック
         let diff = abs(angleOpen - angleClosed);
-        if (diff < 0.1) { // 差が小さすぎる場合
-            showMessage("動きが小さすぎます！\nもう一度閉じてください", color(255, 50, 50));
-            gameState = 1; // 最初に戻す
+        if (diff < 0.05) { // 警告閾値を緩和
+            showMessage("動きが小さすぎます！\nやり直してください", color(255, 50, 50));
+            gameState = 1; 
         } else {
             fixedWristPosition = createVector(wrist.x, wrist.y);
             gameState = 3; 
@@ -404,7 +415,6 @@ function drawSetupUI() {
 
   if (!handDetected) { text("カメラに手を映してください", width/2, height/2); return; }
   
-  // リアルタイム数値を表示
   let currentVal = degrees(smoothedAngle).toFixed(0);
   
   if (gameState === 1) {
@@ -433,20 +443,26 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // ★重要: 可動域計算の修正
-  let progress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
-  progress = constrain(progress, 0, 1);
+  // ★可動域の計算
+  let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
+  let progress = constrain(rawProgress, 0, 1);
+
+  // ★反転ロジック（ボタンで切り替え）
+  if (isInverted) {
+    progress = 1.0 - progress;
+  }
   
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
-  // 10%以上動けば反応
+  // 10%以上で反応
   let isBatActive = (progress >= 0.1); 
 
   push();
   translate(batX, batY);
+  
   if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
   else rotate(map(progress, 0, 1, -PI/4, PI/4));
   
@@ -533,16 +549,18 @@ function drawGameUI(progress) {
   let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
   text(`Life: ${hearts}${empty}`, 20, 20);
 
-  // 可動域バー（常に表示）
   let uiW = 220; let uiX = width / 2 - uiW / 2; let uiY = 10; 
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
   fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
   text("現在の可動域", uiX + uiW/2, uiY + 5);
-  textSize(30); textStyle(BOLD); text((progress*100).toFixed(0) + " %", uiX + uiW/2, uiY + 30);
+  textSize(30); textStyle(BOLD); text(currentCm.toFixed(1) + " cm", uiX + uiW/2, uiY + 30);
 
   let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
   stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
-  noStroke(); fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
+  
+  if (progress < 0.1) fill(100); 
+  else fill(255, map(progress,0,1,100,255), 0);
+  
   rect(barX, barY, map(progress, 0, 1, 0, barW), 10); 
 
   if (messageTimer > 0) {
