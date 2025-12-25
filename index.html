@@ -3,60 +3,51 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Ultimate Debug</title>
+  <title>Thumb Baseball - Force Entry</title>
   <style>
-    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: none; }
+    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
-    /* キャンバスは一番奥に配置（ボタンの邪魔をさせない） */
-    canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; pointer-events: none; }
+    /* キャンバス */
+    canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
     /* 操作盤（最前面） */
     #overlay {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.9);
-      display: flex; flex-direction: row; 
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      display: flex; flex-direction: column; 
       justify-content: center; align-items: center;
-      z-index: 9999; /* 確実に一番手前 */
-      color: white; text-align: center;
+      z-index: 9999; color: white; text-align: center;
     }
 
-    #left-panel { width: 40%; padding: 10px; display: flex; justify-content: center; }
-    #instruction {
-      background: rgba(50, 50, 50, 0.8);
-      border: 1px solid #777;
-      border-radius: 8px; padding: 10px;
-      font-size: 12px; line-height: 1.4;
-      text-align: left; width: 100%;
-    }
+    h1 { margin: 0 0 20px 0; font-size: 28px; color: #ffff00; }
 
-    #right-panel { width: 50%; padding: 10px; display: flex; flex-direction: column; align-items: center; }
-    
-    h1 { margin: 0 0 10px 0; font-size: 24px; color: #ffff00; }
-
-    .btn-container { display: flex; flex-direction: column; gap: 15px; width: 100%; }
+    .btn-container { display: flex; gap: 20px; width: 80%; justify-content: center; margin-bottom: 20px; }
 
     .hand-btn {
-      padding: 20px 0; font-size: 20px; font-weight: bold;
-      color: #000; background: #ffff00; border: 2px solid #fff; border-radius: 10px; cursor: pointer;
-      box-shadow: 0 4px 10px rgba(255, 255, 255, 0.3);
-      width: 100%; touch-action: manipulation;
+      padding: 20px 30px; font-size: 20px; font-weight: bold;
+      color: #000; background: #ffff00; border: 4px solid #fff; border-radius: 15px; 
+      cursor: pointer; min-width: 150px;
+      box-shadow: 0 5px 15px rgba(255, 255, 0, 0.4);
     }
     .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
 
-    /* デバッグログ（常に表示して状況を確認） */
-    #debugLog {
-      margin-top: 15px; color: #ff5555; font-weight: bold; 
-      font-size: 12px; background: rgba(0,0,0,1); border: 1px solid red;
-      padding: 5px; width: 100%; min-height: 60px; text-align: left;
-      white-space: pre-wrap; overflow-y: auto;
+    /* ログ表示エリア（進行状況が見える） */
+    #statusLog {
+      margin-top: 10px; color: #00ff00; font-weight: bold; 
+      font-size: 14px; background: #222; border: 1px solid #555;
+      padding: 10px; border-radius: 5px; width: 90%;
+      min-height: 60px; text-align: left; white-space: pre-wrap;
+    }
+
+    /* 困った時の強制スタートボタン */
+    #forceStartBtn {
+      display: none; /* 最初は隠す */
+      margin-top: 20px; padding: 15px 30px;
+      background: #ff4444; color: white; border: 2px solid white;
+      font-size: 18px; font-weight: bold; border-radius: 10px;
     }
 
     #rawVideo { display: none; }
-
-    @media (orientation: portrait) {
-      #overlay { flex-direction: column; }
-      #left-panel, #right-panel { width: 90%; }
-    }
   </style>
   
   <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
@@ -68,25 +59,16 @@
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
 
   <div id="overlay">
-    <div id="left-panel">
-      <div id="instruction">
-        <strong>【手順】</strong><br>
-        1. 手を選んでボタンをタップ。<br>
-        2. カメラ許可を「許可」。<br>
-        3. 画面の指示に従い測定。<br>
-        <br>
-        ※ボタンが反応しない場合は、ページを再読み込みしてください。
-      </div>
+    <h1 id="titleText">Thumb Baseball</h1>
+    
+    <div id="btn-group" class="btn-container">
+      <button class="hand-btn" onclick="startSequence('right')">右手</button>
+      <button class="hand-btn" onclick="startSequence('left')">左手</button>
     </div>
 
-    <div id="right-panel">
-      <h1>Thumb Baseball</h1>
-      <div id="btn-group" class="btn-container">
-        <button class="hand-btn" id="btnRight">右手でプレイ</button>
-        <button class="hand-btn" id="btnLeft">左手でプレイ</button>
-      </div>
-      <div id="debugLog">システム準備完了。<br>ボタンを押してください。</div>
-    </div>
+    <div id="statusLog">準備完了。どちらの手で遊びますか？</div>
+    
+    <button id="forceStartBtn" onclick="forceEnterGame()">強制的にゲームを始める</button>
   </div>
 
 <script>
@@ -99,7 +81,7 @@ let handDetected = false;
 let isGameStarted = false;
 let isRightHand = true; 
 
-// ゲーム変数
+// ゲーム状態
 let gameState = 1; 
 let angleClosed = 0, angleOpen = 0, currentAngle = 0;
 let currentCm = 0; 
@@ -116,150 +98,111 @@ let combo = 0;
 
 let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
+// 音声用
 let audioCtx = null;
 
 let batRangeStart, batRangeEnd; 
 let guidePositionX, guidePositionY;
 let panelStartX, panelStartY;
 
-// ログ出力（画面に見えるように）
+// ログ出力
 function log(msg) {
-  const el = document.getElementById('debugLog');
-  if(el) {
-    let now = new Date();
-    let time = now.getHours() + ":" + now.getMinutes() + ":" + now.getSeconds();
-    el.innerHTML = `[${time}] ${msg}<br>` + el.innerHTML;
-  }
-  console.log(msg);
+  const el = document.getElementById('statusLog');
+  if(el) el.innerText = msg + "\n" + el.innerText; // 新しい情報を上に
 }
 
-// エラーハンドリング
+// エラーキャッチ
 window.onerror = function(msg, url, line) {
-  log("ERR: " + msg);
-  return false;
+  log("⚠️ エラー: " + msg);
+  document.getElementById('forceStartBtn').style.display = 'inline-block'; // エラーが出たら強制ボタン表示
 };
 
-// --- 初期化 (window.onloadで確実にイベント設定) ---
-window.onload = function() {
-  log("ページ読み込み完了");
-  
-  // スマホでのHTTPSチェック
-  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    log("警告: HTTPSではありません。カメラが動かない可能性があります。");
-  }
-
-  const btnRight = document.getElementById('btnRight');
-  const btnLeft = document.getElementById('btnLeft');
-
-  if(btnRight && btnLeft) {
-    btnRight.addEventListener('click', () => handleClick('right'));
-    btnLeft.addEventListener('click', () => handleClick('left'));
-    log("ボタンイベント設定完了");
-  } else {
-    log("エラー: ボタンが見つかりません");
-  }
-};
-
-// クリック処理（即座に反応させる）
-function handleClick(hand) {
-  log(hand + "ボタンが押されました");
-  
-  // UIを隠す
-  const btnGroup = document.getElementById('btn-group');
-  if(btnGroup) btnGroup.style.display = 'none';
-  
-  log("システム起動シーケンス開始...");
-  
-  // 少し待ってから重い処理へ（UI更新優先）
-  setTimeout(() => {
-    startSequence(hand);
-  }, 100);
-}
-
-// p5.jsのsetup (preloadは使わない！)
+// --- 初期化 ---
 function setup() {
   pixelDensity(1);
   let cnv = createCanvas(windowWidth, windowHeight);
-  cnv.style('z-index', '0'); // キャンバスを奥へ
+  cnv.style('z-index', '0');
   
-  // 画像は非同期で読み込む（待たない）
-  loadImage('stadium_bg.png', 
-    (img) => { 
-      bgImage = img; 
-      log("背景画像読み込み成功");
-    },
-    () => { 
-      log("背景画像なし（続行します）"); 
-    }
-  );
+  loadImage('stadium_bg.png', (img) => { bgImage = img; });
   
   updateLayout();
   initPanels();
 }
 
+// --- スタートボタンが押されたら ---
 async function startSequence(hand) {
-  isRightHand = (hand === 'right');
+  // 1. UI即時更新
+  document.getElementById('btn-group').style.display = 'none';
+  document.getElementById('titleText').innerText = "起動中...";
+  log("--> ボタン確認。システム起動開始...");
   
-  // AudioContext作成 (エラーでも止まらないようにtry-catch)
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (AudioContext) {
-      audioCtx = new AudioContext();
-      audioCtx.resume();
-      log("音声システム準備OK");
-    } else {
-      log("このブラウザはWebAudio非対応です");
+  // 5秒経っても始まらなかったら強制ボタンを出すタイマー
+  setTimeout(() => {
+    if(!isGameStarted) {
+      log("⚠️ 起動に時間がかかっています");
+      document.getElementById('forceStartBtn').style.display = 'inline-block';
     }
-  } catch(e) {
-    log("音声エラー(無視): " + e);
-  }
+  }, 5000);
 
+  isRightHand = (hand === 'right');
   updateLayout();
   initPanels();
 
-  // カメラ起動
+  // 2. 音声コンテキスト (Web Audio API)
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if(AudioContext) {
+      audioCtx = new AudioContext();
+      audioCtx.resume();
+      log("音声システムOK");
+    }
+  } catch(e) { log("音声エラー(無視): " + e); }
+
+  // 3. カメラ起動プロセスへ
   startCamera();
 }
 
 function startCamera() {
-  log("カメラ権限を要求中...");
+  log("カメラ権限をリクエスト中...");
   
   const constraints = {
     audio: false,
     video: { 
       facingMode: "user", 
-      width: { ideal: 480 }, 
-      height: { ideal: 360 } 
+      width: { ideal: 640 }, 
+      height: { ideal: 480 } 
     }
   };
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    log("致命的エラー: カメラAPI非対応");
-    alert("このブラウザではカメラが使えません");
+    log("❌ このブラウザはカメラ非対応です");
+    document.getElementById('forceStartBtn').style.display = 'inline-block';
     return;
   }
 
   navigator.mediaDevices.getUserMedia(constraints)
     .then(stream => {
-      log("カメラ許可OK。映像取得...");
+      log("カメラ許可OK。映像読込中...");
       rawVideo.srcObject = stream;
+      
+      // Android互換: メタデータ読み込み後に再生
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
-        log("映像再生開始。AI読込へ...");
-        initMediaPipe(); 
+        log("映像再生開始。AIをロードします...");
+        initAI(); 
       };
     })
     .catch(err => {
-      log("カメラ起動失敗: " + err.name);
-      alert("カメラエラー: " + err.message + "\n設定を確認してください");
-      // ボタンを戻す
-      document.getElementById('btn-group').style.display = 'flex';
+      log("❌ カメラエラー: " + err.name);
+      alert("カメラが起動できませんでした。\n「強制的にゲームを始める」を押してください。");
+      document.getElementById('forceStartBtn').style.display = 'inline-block';
     });
 }
 
-function initMediaPipe() {
+function initAI() {
   if (typeof Hands === 'undefined') {
-    log("エラー: AIライブラリ未ロード");
+    log("❌ AIライブラリが見つかりません");
+    document.getElementById('forceStartBtn').style.display = 'inline-block';
     return;
   }
 
@@ -267,7 +210,7 @@ function initMediaPipe() {
     hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
     hands.setOptions({
       maxNumHands: 1, 
-      modelComplexity: 0, // 最軽量
+      modelComplexity: 0, // Lite
       minDetectionConfidence: 0.5, 
       minTrackingConfidence: 0.5
     });
@@ -284,7 +227,8 @@ function initMediaPipe() {
     });
     
     camera.start().then(() => {
-      log("AI稼働開始！ゲームへ移動します");
+      log("AI稼働成功！ゲーム画面へ...");
+      // 少し待ってから画面遷移
       setTimeout(() => {
         document.getElementById('overlay').style.display = 'none';
         isGameStarted = true;
@@ -292,7 +236,15 @@ function initMediaPipe() {
     });
   } catch(e) {
     log("AI初期化エラー: " + e);
+    document.getElementById('forceStartBtn').style.display = 'inline-block';
   }
+}
+
+// どうしても動かない時の強制突破ボタン
+function forceEnterGame() {
+  document.getElementById('overlay').style.display = 'none';
+  isGameStarted = true;
+  // AIなしでも動くようにダミーループを回す必要はない(p5のdrawが回るため)
 }
 
 function onResults(results) {
@@ -599,7 +551,6 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
-    // 修正：左右モードに合わせて出現位置を変える
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
     this.startY = height * 0.6; 
     this.x = this.startX; this.y = this.startY; 
