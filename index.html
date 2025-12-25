@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Reverse Fix</title>
+  <title>Thumb Baseball - Correct Movement</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
@@ -79,7 +79,7 @@
         1. 手を選んでボタンをタップ<br>
         2. カメラ許可を「許可」<br>
         3. 画面の指示に従い測定<br>
-        4. 親指を開くとスイング！<br>
+        4. <strong>親指を開いて</strong>スイング！<br>
         <br>
         ※反応しない場合は再読み込みしてください
       </div>
@@ -420,16 +420,15 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // ★逆転修正: 1.0 - rawProgress で反転させる
+  // ★重要：動きの正転化（閉=0, 開=1）
   let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
-  let invertedProgress = 1.0 - rawProgress; // ここで反転！
-  
   let progress = 0;
-  // デッドゾーン処理 (反転後に対して適用)
-  if (invertedProgress < 0.15) {
+
+  // デッドゾーン (0.15以下は0とみなす)
+  if (rawProgress < 0.15) {
     progress = 0;
   } else {
-    progress = map(invertedProgress, 0.15, 0.85, 0, 1);
+    progress = map(rawProgress, 0.15, 0.85, 0, 1);
     progress = constrain(progress, 0, 1);
   }
   
@@ -442,6 +441,7 @@ function playGame() {
   push();
   translate(batX, batY);
   
+  // バットの回転方向
   if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
   else rotate(map(progress, 0, 1, -PI/4, PI/4));
   
