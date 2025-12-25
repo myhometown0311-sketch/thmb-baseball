@@ -3,11 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Touch Fix</title>
+  <title>Thumb Baseball - High Sensitivity</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
-    /* キャンバスは操作を邪魔しないように設定 */
+    /* キャンバスは操作を邪魔しない */
     canvas { 
       display: block; position: absolute; top: 0; left: 0; 
       width: 100% !important; height: 100% !important; 
@@ -21,7 +21,7 @@
       display: flex; flex-direction: row; 
       justify-content: center; align-items: center;
       z-index: 1000; color: white; text-align: center;
-      pointer-events: auto; /* ここでのタッチを有効化 */
+      pointer-events: auto;
     }
 
     #left-panel { width: 45%; padding: 10px; display: flex; justify-content: center; }
@@ -39,7 +39,7 @@
 
     .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; }
 
-    /* ボタン（押しやすいように大きく・最前面） */
+    /* ボタン（最前面） */
     .hand-btn {
       position: relative;
       padding: 25px 0; font-size: 22px; font-weight: bold;
@@ -48,11 +48,10 @@
       box-shadow: 0 5px 15px rgba(255, 255, 0, 0.4);
       user-select: none; -webkit-user-select: none;
       touch-action: manipulation;
-      z-index: 2000; /* さらに手前 */
+      z-index: 2000; 
     }
     .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
     
-    /* ログ表示 */
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
       font-size: 14px; background: rgba(0,0,0,0.8); border: 1px solid #00ff00;
@@ -83,9 +82,9 @@
         1. 手を選んでボタンをタップ<br>
         2. カメラ許可を「許可」<br>
         3. 画面の指示に従い測定<br>
-        4. プレイ開始！<br>
+        4. <strong>感度高め設定</strong>でプレイ！<br>
         <br>
-        ※ボタンが反応しない場合は画面を更新してください
+        ※反応しない場合は再読み込みしてください
       </div>
     </div>
 
@@ -149,7 +148,7 @@ function log(msg) {
 function setup() {
   pixelDensity(1);
   let cnv = createCanvas(windowWidth, windowHeight);
-  cnv.style('z-index', '-1'); // キャンバスを最背面に
+  cnv.style('z-index', '-1'); 
   
   loadImage('stadium_bg.png', (img) => { bgImage = img; });
   
@@ -159,15 +158,13 @@ function setup() {
   log("準備OK。ボタンを押してください。");
 }
 
-// --- クリック処理（即時反応） ---
+// --- クリック処理 ---
 function handleClick(hand) {
-  // ボタンを押した瞬間にUIを変える
   const btnGroup = document.getElementById('btn-group');
   btnGroup.style.display = 'none';
   
   log("起動中...カメラを許可してください");
   
-  // 処理開始
   setTimeout(() => {
     startSequence(hand);
   }, 100);
@@ -177,7 +174,6 @@ function handleClick(hand) {
 async function startSequence(hand) {
   isRightHand = (hand === 'right');
   
-  // AudioContext (エラーでも止まらない)
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if(AudioContext) {
@@ -188,15 +184,18 @@ async function startSequence(hand) {
 
   updateLayout();
   initPanels();
-
-  // カメラ起動
   startCamera();
 }
 
 function startCamera() {
+  // ★軽量化: 解像度を落としてFPSを稼ぐ
   const constraints = {
     audio: false,
-    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+    video: { 
+        facingMode: "user", 
+        width: { ideal: 480 }, 
+        height: { ideal: 360 } 
+    }
   };
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -214,9 +213,8 @@ function startCamera() {
       };
     })
     .catch(err => {
-      alert("カメラエラー: " + err.message + "\nブラウザの設定でカメラを許可してください");
+      alert("カメラエラー: " + err.message);
       log("カメラエラー: " + err.message);
-      // ボタンを戻す
       document.getElementById('btn-group').style.display = 'flex';
     });
 }
@@ -229,6 +227,7 @@ function initMediaPipe() {
 
   try {
     hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
+    // ★軽量化: Liteモデルを使用
     hands.setOptions({
       maxNumHands: 1, 
       modelComplexity: 0, 
@@ -243,7 +242,7 @@ function initMediaPipe() {
           await hands.send({image: rawVideo}); 
         }
       },
-      width: 640, height: 480
+      width: 480, height: 360 // 低解像度で処理
     });
     
     camera.start().then(() => {
@@ -273,18 +272,10 @@ function onResults(results) {
   }
 }
 
-// ★修正の要：タッチイベントの制御
 function touchStarted() { 
-  // ゲームが始まっていない時は、p5.jsでタッチを消費せず、HTMLボタンに渡す
-  if (!isGameStarted) {
-    return true; 
-  }
-  
-  // ゲーム中
+  if (!isGameStarted) return true; 
   if (gameState === 5 || gameState === 4) resetGame();
   handleInput();
-  
-  // ゲーム中はスクロール防止などのためfalseを返す
   return false; 
 }
 
@@ -294,7 +285,6 @@ function mousePressed() {
   handleInput();
 }
 
-// 簡易効果音
 function playHitSound() {
   if (!audioCtx) return;
   const osc = audioCtx.createOscillator();
@@ -310,7 +300,6 @@ function playHitSound() {
   osc.stop(audioCtx.currentTime + 0.1);
 }
 
-// --- メインループ ---
 function draw() {
   background(0);
   
@@ -480,7 +469,10 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  let progress = constrain(map(currentAngle, angleClosed, angleOpen, 0, 1), 0, 1);
+  // ★感度ブースト設定：動きの幅を1.5倍に拡張
+  let rawProgress = map(currentAngle, angleClosed, angleOpen, 0, 1);
+  let progress = constrain(rawProgress * 1.5, 0, 1); // 1.5倍感度
+  
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
@@ -574,6 +566,7 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
+    // 修正：右手＝左からボール / 左手＝右からボール
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
     this.startY = height * 0.6; 
     this.x = this.startX; this.y = this.startY; 
