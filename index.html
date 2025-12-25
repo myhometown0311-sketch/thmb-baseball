@@ -2,40 +2,75 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-# --- 1. 関数定義: 3点間の角度を算出 ---
+# ---------------------------------------------------------
+# 初期設定：ゲーム変数
+# ---------------------------------------------------------
+window_width = 640
+window_height = 480
+
+# パドル（ラケット）の設定
+paddle_width = 120
+paddle_height = 20
+paddle_color = (255, 100, 100) # 青みのある色
+paddle_x = (window_width - paddle_width) // 2
+paddle_y = window_height - 40
+
+# ボールの設定
+ball_radius = 10
+ball_color = (100, 255, 100) # 緑
+ball_x = window_width // 2
+ball_y = window_height // 2
+ball_dx = 4  # ボールの速度X
+ball_dy = -4 # ボールの速度Y
+
+# ブロックの設定
+block_rows = 5
+block_cols = 8
+block_width = window_width // block_cols
+block_height = 30
+blocks = []
+
+# ブロックの初期化（フラグ1が存在、0が破壊済み）
+for r in range(block_rows):
+    row_blocks = []
+    for c in range(block_cols):
+        row_blocks.append(1)
+    blocks.append(row_blocks)
+
+# ゲームの状態
+game_over = False
+score = 0
+
+# ---------------------------------------------------------
+# 関数定義：角度計算
+# ---------------------------------------------------------
 def calculate_angle(a, b, c):
-    """
-    3つの座標(a, b, c)から、bを中心とした角度(0〜180度)を計算する関数
-    a: 起点 (例: MCP関節)
-    b: 中心点 (例: IP関節)
-    c: 終点 (例: 指先)
-    """
-    a = np.array(a) # First
-    b = np.array(b) # Mid
-    c = np.array(c) # End
+    """3点間の角度を計算する"""
+    a = np.array(a) # 起点
+    b = np.array(b) # 中点（関節）
+    c = np.array(c) # 終点
     
-    # ラジアンから角度を計算
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians*180.0/np.pi)
     
-    # 180度を超える場合は補正（内角を取るため）
     if angle > 180.0:
         angle = 360 - angle
-        
     return angle
 
-# --- 2. 初期設定 ---
+# ---------------------------------------------------------
+# メイン処理
+# ---------------------------------------------------------
 mp_drawing = mp.solutions.drawing_utils
 mp_hands = mp.solutions.hands
 
-# Webカメラの起動
 cap = cv2.VideoCapture(0)
+cap.set(3, window_width)
+cap.set(4, window_height)
 
-# MediaPipe Handsのセットアップ
 with mp_hands.Hands(
-    min_detection_confidence=0.7, # 検出の信頼度閾値
-    min_tracking_confidence=0.5,  # 追跡の信頼度閾値
-    max_num_hands=1               # 片手のみ検出
+    min_detection_confidence=0.7,
+    min_tracking_confidence=0.5,
+    max_num_hands=1
 ) as hands:
     
     while cap.isOpened():
@@ -43,94 +78,142 @@ with mp_hands.Hands(
         if not ret:
             break
         
-        # 1. 画像の左右反転（鏡として使うため）
+        # 左右反転 & カラー変換
         frame = cv2.flip(frame, 1)
-        
-        # 2. BGRからRGBへ変換
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image.flags.writeable = False
         
-        # 3. 推論（検出）実行
         results = hands.process(image)
         
-        # 4. RGBからBGRへ戻す
         image.flags.writeable = True
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
-        # ランドマークが検出された場合の処理
+        current_angle = 0
+        status_text = "Wait"
+
+        # --- ハンドトラッキングと角度計算 ---
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
-                
-                # --- 座標の取得 ---
                 h, w, _ = image.shape
                 
-                # 親指のランドマークインデックス:
-                # 2: CM関節 (CMC) - 手首に近い付け根
-                # 3: MP関節 (MCP) - 親指の付け根
-                # 4: IP関節 (Tip) - 親指の先端
-                # ※ここではMP関節(2)・IP関節(3)・指先(4)を使って、IP関節の屈曲角度を見ます
+                # 親指のランドマーク: 2(CM), 3(MP), 4(IP/Tip)
+                p2 = [hand_landmarks.landmark[2].x * w, hand_landmarks.landmark[2].y * h]
+                p3 = [hand_landmarks.landmark[3].x * w, hand_landmarks.landmark[3].y * h]
+                p4 = [hand_landmarks.landmark[4].x * w, hand_landmarks.landmark[4].y * h]
                 
-                # 座標抽出
-                p2 = [hand_landmarks.landmark[2].x * w, hand_landmarks.landmark[2].y * h] # MCP
-                p3 = [hand_landmarks.landmark[3].x * w, hand_landmarks.landmark[3].y * h] # IP
-                p4 = [hand_landmarks.landmark[4].x * w, hand_landmarks.landmark[4].y * h] # Tip
+                # 角度計算
+                current_angle = calculate_angle(p2, p3, p4)
                 
-                # 角度計算 (IP関節を中心とした角度)
-                angle = calculate_angle(p2, p3, p4)
+                # 骨格描画
+                mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                 
-                # --- 判定ロジック (逆転防止済み) ---
-                # 親指が伸びている(Open) = 180度に近い
-                # 親指が曲がっている(Close) = 角度が小さい
-                
-                if angle > 160:
-                    stage = "Open"
-                    status_color = (0, 255, 0) # 緑
-                elif angle < 100: # 閾値は調整可能
-                    stage = "Close"
-                    status_color = (0, 0, 255) # 赤
-                else:
-                    stage = "Moving"
-                    status_color = (255, 255, 0) # 黄
-                
-                # --- 描画処理 ---
-                
-                # 1. 骨格の描画
-                mp_drawing.draw_landmarks(
-                    image, hand_landmarks, mp_hands.HAND_CONNECTIONS,
-                    mp_drawing.DrawingSpec(color=(121, 22, 76), thickness=2, circle_radius=4),
-                    mp_drawing.DrawingSpec(color=(250, 44, 250), thickness=2, circle_radius=2),
-                )
-                
-                # 2. 関節部分への数値表示
-                cv2.putText(image, str(int(angle)), 
-                            tuple(np.multiply(p3, [1, 1]).astype(int)), 
+                # 関節横に角度を表示
+                cv2.putText(image, f"{int(current_angle)}", tuple(np.multiply(p3, [1, 1]).astype(int)), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
-                
-                # 3. 画面上の情報表示パネル（ゲージ削除済み・数値強調）
-                # 背景ボックス
-                cv2.rectangle(image, (0,0), (250, 85), (245, 117, 16), -1)
-                
-                # テキスト: 可動域角度 (ROM Angle)
-                cv2.putText(image, 'ROM Angle', (15,20), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
-                cv2.putText(image, str(int(angle)) + " deg", 
-                            (15,70), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 2, cv2.LINE_AA)
-                
-                # テキスト: 状態 (Status)
-                cv2.putText(image, 'Status', (140,20), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
-                cv2.putText(image, stage, 
-                            (140,70), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 2, cv2.LINE_AA)
 
-        # 画面出力
-        cv2.imshow('Thumb ROM Analysis', image)
+        # --- ゲーム操作ロジック（角度 → パドル位置） ---
+        # 修正点3: 親指の開閉と動作の連動
+        # 170度付近(開) → 画面右へ / 90度付近(閉) → 画面左へ
+        # np.interpを使って角度を画面のX座標にマッピング
+        
+        # 角度の範囲を [90, 160] と仮定してマッピングします
+        paddle_x = np.interp(current_angle, [90, 160], [0, window_width - paddle_width])
+        
+        # ステータス判定
+        if current_angle > 150:
+            status_text = "Open"
+        elif current_angle < 100:
+            status_text = "Close"
+        else:
+            status_text = "Move"
 
-        # 'q'キーで終了
-        if cv2.waitKey(10) & 0xFF == ord('q'):
+        # --- ゲームの更新処理 ---
+        if not game_over:
+            # ボールの移動
+            ball_x += ball_dx
+            ball_y += ball_dy
+            
+            # 壁との衝突
+            if ball_x <= 0 or ball_x >= window_width:
+                ball_dx *= -1
+            if ball_y <= 0:
+                ball_dy *= -1
+            
+            # パドルとの衝突
+            if (paddle_y < ball_y + ball_radius < paddle_y + paddle_height and
+                paddle_x < ball_x < paddle_x + paddle_width):
+                ball_dy *= -1
+                
+            # 底に落ちた場合
+            if ball_y > window_height:
+                game_over = True
+                
+            # ブロックとの衝突判定
+            # ボールの位置から行と列を計算
+            # 簡易的な衝突判定
+            row = int(ball_y // block_height)
+            col = int(ball_x // block_width)
+            
+            if 0 <= row < block_rows and 0 <= col < block_cols:
+                if blocks[row][col] == 1:
+                    blocks[row][col] = 0 # ブロック破壊
+                    ball_dy *= -1
+                    score += 10
+
+        # --- 描画処理 ---
+        
+        # 1. ブロックの描画
+        for r in range(block_rows):
+            for c in range(block_cols):
+                if blocks[r][c] == 1:
+                    bx = c * block_width
+                    by = r * block_height
+                    cv2.rectangle(image, (bx, by), (bx + block_width - 2, by + block_height - 2), 
+                                  (50 + r*40, 150, 200), -1)
+
+        # 2. パドルの描画
+        cv2.rectangle(image, (int(paddle_x), paddle_y), (int(paddle_x + paddle_width), paddle_y + paddle_height), 
+                      paddle_color, -1)
+        
+        # 3. ボールの描画
+        if not game_over:
+            cv2.circle(image, (int(ball_x), int(ball_y)), ball_radius, ball_color, -1)
+        else:
+            cv2.putText(image, "GAME OVER", (window_width//2 - 100, window_height//2),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.putText(image, "Press 'R' to Reset", (window_width//2 - 120, window_height//2 + 40),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+        # 4. 情報表示パネル（修正点1: ゲージ削除 / 修正点2: 数値化）
+        # 左上に背景ボックス
+        cv2.rectangle(image, (0, window_height - 100), (220, window_height), (50, 50, 50), -1)
+        
+        # 角度表示（大きく）
+        cv2.putText(image, f"Angle: {int(current_angle)} deg", (10, window_height - 60),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+        
+        # 状態表示
+        cv2.putText(image, f"Status: {status_text}", (10, window_height - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 1)
+        
+        # スコア表示
+        cv2.putText(image, f"Score: {score}", (window_width - 150, window_height - 20),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+
+        cv2.imshow('Thumb Control Block Breaker', image)
+
+        key = cv2.waitKey(10) & 0xFF
+        if key == ord('q'):
             break
+        if key == ord('r') and game_over:
+            # リセット処理
+            game_over = False
+            ball_x, ball_y = window_width // 2, window_height // 2
+            ball_dy = -4
+            score = 0
+            blocks = [[1 for _ in range(block_cols)] for _ in range(block_rows)]
 
 cap.release()
 cv2.destroyAllWindows()
+
 
