@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Auto Adjusted</title>
+  <title>Thumb Baseball - Smooth Analog</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -70,7 +70,7 @@
         3. <strong>親指を開いて</strong>タップ（スイング）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small><strong>「閉じる＝外側」「開く＝内側」</strong><br>に自動調整されます。</small>
+        <small><strong>「閉じる＝外側」「開く＝内側」</strong><br>親指の動きに合わせて滑らかに動きます。</small>
       </div>
     </div>
 
@@ -115,7 +115,6 @@ let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
 let audioCtx = null;
 
-// バットの可動範囲（自動設定用）
 let batOuterX, batInnerX; 
 let guidePositionX, guidePositionY;
 let panelStartX;
@@ -261,7 +260,10 @@ function onResults(results) {
     let rawAngle = v1.angleBetween(v2);
     
     if (smoothedAngle === 0) smoothedAngle = rawAngle;
-    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.3); 
+    
+    // ★調整：スムージングを少し弱めにして、反応速度を向上
+    // (0.3 -> 0.4) 値が大きいほど現在の動きに敏感
+    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.4); 
   } else {
     handDetected = false;
   }
@@ -307,15 +309,13 @@ function windowResized() {
 }
 
 function updateLayout() {
-  // ■ 自動調整ロジック：
-  // 閉じたとき(Wait)は画面端、開いたとき(Swing)は画面中央。
   if (isRightHand) {
-    batOuterX = width * 0.85; // 右端 (閉 = 構え)
-    batInnerX = width * 0.50; // 中央 (開 = 打撃)
+    batOuterX = width * 0.85; 
+    batInnerX = width * 0.50; 
     guidePositionX = width * 0.85;
   } else {
-    batOuterX = width * 0.15; // 左端 (閉 = 構え)
-    batInnerX = width * 0.50; // 中央 (開 = 打撃)
+    batOuterX = width * 0.15; 
+    batInnerX = width * 0.50; 
     guidePositionX = width * 0.15;
   }
   guidePositionY = height * 0.75;
@@ -418,22 +418,23 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
+  // ★重要な変更点：
+  // 以前はここでデッドゾーン(0.1以下切り捨て)の処理があったため、
+  // 0 -> 1 に飛ぶような動作になっていました。
+  // それを削除し、純粋に constrain だけにしました。
   let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
-  if (rawProgress < 0.1) rawProgress = 0; 
   let progress = constrain(rawProgress, 0, 1);
 
-  // ■ 完全固定ロジック:
-  // 親指閉(0) = 外側 (batOuterX)
-  // 親指開(1) = 内側 (batInnerX)
-  // 左右の手の判定は updateLayout で Outer/Inner の座標を定義済み
+  // 滑らかに連動させる
   let batX = map(progress, 0, 1, batOuterX, batInnerX);
   
-  // バットの角度も進行度に合わせて回転 (外→内)
+  // 角度も滑らかに
   let rotateAngle;
   if (isRightHand) rotateAngle = map(progress, 0, 1, PI/4, -PI/4); 
   else rotateAngle = map(progress, 0, 1, -PI/4, PI/4);
   
-  let isBatActive = (progress >= 0.1); 
+  // 完全に閉じている時(0.0)以外はアクティブ扱いにする
+  let isBatActive = (progress > 0.05); 
   let batY = guidePositionY - 80;
   
   push();
@@ -560,7 +561,6 @@ class Ball {
     else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
     let targetX;
     
-    // ヒット時の飛球方向
     if (isRightHand) targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
     else targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
     
@@ -575,4 +575,3 @@ class Ball {
 </script>
 </body>
 </html>
-
