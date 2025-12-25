@@ -3,17 +3,15 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - The One</title>
+  <title>Thumb Baseball - True Fix</title>
   <style>
-    /* 余計な装飾を排除し、コンテンツに集中させる */
     body { margin: 0; padding: 0; overflow: hidden; background-color: #111; font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; touch-action: manipulation; }
     
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
-    /* ミニマリズムに基づいたUI */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.92); /* 没入感を高める漆黒 */
+      background: rgba(0, 0, 0, 0.92);
       display: flex; flex-direction: row; 
       justify-content: center; align-items: center;
       z-index: 1000; color: #f5f5f7; text-align: center;
@@ -33,7 +31,6 @@
 
     .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 280px; }
 
-    /* ボタンは「押す」感覚をデザインする */
     .hand-btn {
       padding: 22px 0; font-size: 18px; font-weight: 500;
       color: #000; background: #fff; border: none; border-radius: 12px; 
@@ -61,14 +58,13 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>It just works.</strong><br><br>
+        <strong>Final Answer.</strong><br><br>
         1. 手を選ぶ。<br>
         2. 親指を閉じて、タップ。<br>
         3. 親指を開いて、タップ。<br>
         <br>
-        それだけです。<br>
-        画面の外側で構え、内側へ振り抜く。<br>
-        すべては直感通りに。
+        <strong>閉じる</strong> ＝ 外側で構える<br>
+        <strong>開く</strong> ＝ 内側へ振る
       </div>
     </div>
 
@@ -83,7 +79,6 @@
   </div>
 
 <script>
-// エラーは美しくないが、必要なら表示する
 window.onerror = function(msg, url, line) {
   const el = document.getElementById('statusLog');
   if(el) { el.innerHTML = "Error: " + msg; el.style.color = "#ff3b30"; }
@@ -114,7 +109,7 @@ let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
 let audioCtx = null;
 
-let batOuterX, batInnerX; 
+let batWaitX, batHitX; // 変数名をわかりやすく変更: Wait(構え) / Hit(打撃)
 let guidePositionX, guidePositionY;
 let panelStartX;
 
@@ -130,7 +125,7 @@ function setup() {
   
   loadImage('stadium_bg.png', 
     (img) => { bgImage = img; },
-    (err) => { /* 背景なしでも美しく動作する */ }
+    (err) => {}
   );
 
   updateLayout();
@@ -147,7 +142,6 @@ function draw() {
     else { dh=height; dw=height*imgAspect; dy=0; dx=(width-dw)/2; }
     image(bgImage, dx, dy, dw, dh);
   } else {
-    // ミニマルなグリーン
     background(20, 40, 20);
     noStroke(); fill(255, 255, 255, 10);
     rect(0, height*0.75, width, height*0.25);
@@ -155,7 +149,6 @@ function draw() {
 
   if (!isGameStarted) return;
 
-  // カメラ映像は邪魔にならないよう控えめに
   if (rawVideo && rawVideo.readyState >= 2) {
     push();
     translate(width, 0); scale(-1, 1); tint(255, 40); 
@@ -164,7 +157,6 @@ function draw() {
   }
 
   if (handDetected && wrist && thumbTip) {
-    // 認識ラインはシャープに
     stroke(0, 255, 0, 150); strokeWeight(2); 
     line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
   }
@@ -261,7 +253,6 @@ function onResults(results) {
     let rawAngle = v1.angleBetween(v2);
     
     if (smoothedAngle === 0) smoothedAngle = rawAngle;
-    // 反応速度と滑らかさの黄金比
     smoothedAngle = lerp(smoothedAngle, rawAngle, 0.4); 
   } else {
     handDetected = false;
@@ -308,14 +299,17 @@ function windowResized() {
 }
 
 function updateLayout() {
-  // ■ 哲学: 右手なら右側がホーム(待機)。左手なら左側がホーム。
+  // ■ 修正ポイント：
+  // batWaitX (構え位置/親指閉) = 画面の外側（端）
+  // batHitX  (打撃位置/親指開) = 画面の内側（中央）
+  
   if (isRightHand) {
-    batOuterX = width * 0.85; // 待機位置 (右)
-    batInnerX = width * 0.50; // 打撃位置 (中央)
+    batWaitX = width * 0.90; // 右端
+    batHitX  = width * 0.50; // 中央
     guidePositionX = width * 0.85;
   } else {
-    batOuterX = width * 0.15; // 待機位置 (左)
-    batInnerX = width * 0.50; // 打撃位置 (中央)
+    batWaitX = width * 0.10; // 左端
+    batHitX  = width * 0.50; // 中央
     guidePositionX = width * 0.15;
   }
   guidePositionY = height * 0.75;
@@ -417,53 +411,25 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // ■ コア・ロジックの反転
-  // あなたが「逆だ」と言った。だから、逆にした。
-  // 以前のロジック: map(progress, 0, 1, Outer, Inner)
-  // 今回のロジック: map(progress, 0, 1, Inner, Outer)
-  // これにより、物理的に反対の挙動を強制する。
-  
   let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
   let progress = constrain(rawProgress, 0, 1);
 
-  // 極性反転マッピング: 0(閉)→Inner, 1(開)→Outer
-  // Wait, if 0 is Close, and user wants Close=Outer...
-  // User said "Movement is REVERSED".
-  // Meaning my previous code (Close=Outer) was behaving as (Close=Inner) for them.
-  // Therefore, I must set Close=Inner in code to achieve Close=Outer in their reality?
-  // No, that's confusion.
-  // Simpler: I will map 0 to Inner and 1 to Outer.
-  // Because the user said "Currently: Outer=Close, Inner=Open" IS WRONG?
-  // User said: "画面外側のときが、親指を閉じています。画面内側に移動するときに、親指を開いています。"
-  // (When Outer, Thumb is Closed. When moving Inner, Thumb Opens.)
-  // User said: "違います。動作に合わせてバットが動いていません。" (No. The bat isn't moving with the action.)
-  // Meaning the user WANTS: Close = Outer, Open = Inner.
-  // And my previous code FAILED to do that.
-  // So I will force the coordinates:
+  // ■ 動作ロジック（修正済）
+  // 0 (閉) = Wait (画面端)
+  // 1 (開) = Hit (画面中央)
+  let batX = map(progress, 0, 1, batWaitX, batHitX);
   
-  // startX = batOuterX (Close / 0.0)
-  // endX = batInnerX (Open / 1.0)
-  
-  // This is what I had. Why did it fail?
-  // Because `smoothedAngle` calculation might be inverted.
-  // If `angleClosed` is 10 and `angleOpen` is 90.
-  // map(10, 10, 90, 0, 1) -> 0.
-  // If `angleClosed` is 90 and `angleOpen` is 10.
-  // map(90, 90, 10, 0, 1) -> 0.
-  // The map function handles this correctly.
-  
-  // THE JOBS FIX:
-  // I will assume the user's perception of "Outer/Inner" or "Open/Close" mapping was flipped by the *mirroring*.
-  // I will flip the coordinate mapping variables purely.
-  
-  let batX = map(progress, 0, 1, batInnerX, batOuterX);
-  
-  // Bat Rotation
+  // バットの回転も、外側から内側へ振るように設定
   let rotateAngle;
-  if (isRightHand) rotateAngle = map(progress, 0, 1, -PI/4, PI/4); 
-  else rotateAngle = map(progress, 0, 1, PI/4, -PI/4);
+  if (isRightHand) {
+    // 右手：右(Wait)から左(Hit)へ
+    rotateAngle = map(progress, 0, 1, PI/4, -PI/4);
+  } else {
+    // 左手：左(Wait)から右(Hit)へ
+    rotateAngle = map(progress, 0, 1, -PI/4, PI/4);
+  }
   
-  let isBatActive = (progress > 0.05); 
+  let isBatActive = (progress > 0.1); 
   let batY = guidePositionY - 80;
   
   push();
@@ -471,15 +437,15 @@ function playGame() {
   rotate(rotateAngle);
   
   if (isBatActive) { 
-    fill(255, 200, 50); noStroke(); // Swing Color
+    fill(255, 200, 50); noStroke(); 
   } else { 
-    fill(100, 100, 100, 150); noStroke(); // Wait Color
+    fill(100, 100, 100, 150); noStroke(); 
   }
   rect(-15, 0, 30, 140, 8); 
   
   if (!isBatActive) { 
     fill(255); textSize(20); textAlign(CENTER); noStroke(); 
-    rotate(isRightHand ? PI/4 : -PI/4); // Rotate text to be readable
+    rotate(isRightHand ? -PI/4 : PI/4); 
     text("WAIT", 0, -30); 
   }
   pop();
@@ -589,9 +555,11 @@ class Ball {
     else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
     let targetX;
     
-    // Reverse logic applied to ball direction as well
-    if (isRightHand) targetX = map(1.0 - progress, 0.3, 0.9, areaRight, areaLeft);
-    else targetX = map(1.0 - progress, 0.3, 0.9, areaLeft, areaRight);
+    // ヒット時の飛球方向: 打った方向(progress大)へ飛ぶ
+    // Hit(1) = Center, Wait(0) = Outer
+    // 振り抜いたら反対側へ飛ぶイメージ
+    if (isRightHand) targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    else targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
     
     let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
     let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
@@ -604,3 +572,4 @@ class Ball {
 </script>
 </body>
 </html>
+
