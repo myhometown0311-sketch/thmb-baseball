@@ -3,25 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - High Sensitivity</title>
+  <title>Thumb Baseball - High Precision</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
-    /* キャンバスは操作を邪魔しない */
-    canvas { 
-      display: block; position: absolute; top: 0; left: 0; 
-      width: 100% !important; height: 100% !important; 
-      z-index: 0; 
-    }
+    /* キャンバス */
+    canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
-    /* 操作盤（最前面・タッチ有効） */
+    /* 操作盤 */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
       display: flex; flex-direction: row; 
       justify-content: center; align-items: center;
-      z-index: 1000; color: white; text-align: center;
-      pointer-events: auto;
+      z-index: 9999; color: white; text-align: center;
     }
 
     #left-panel { width: 45%; padding: 10px; display: flex; justify-content: center; }
@@ -30,16 +25,15 @@
       border: 1px solid #777;
       border-radius: 8px; padding: 15px;
       font-size: 13px; line-height: 1.5; color: white;
-      text-align: left; width: 100%;
+      text-align: left; width: 100%; pointer-events: none;
     }
 
     #right-panel { width: 45%; padding: 10px; display: flex; flex-direction: column; align-items: center; }
     
-    h1 { margin: 0 0 15px 0; font-size: 24px; color: #ffff00; }
+    h1 { margin: 0 0 15px 0; font-size: 24px; color: #ffff00; pointer-events: none; }
 
     .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; }
 
-    /* ボタン（最前面） */
     .hand-btn {
       position: relative;
       padding: 25px 0; font-size: 22px; font-weight: bold;
@@ -48,15 +42,16 @@
       box-shadow: 0 5px 15px rgba(255, 255, 0, 0.4);
       user-select: none; -webkit-user-select: none;
       touch-action: manipulation;
-      z-index: 2000; 
+      pointer-events: auto !important;
     }
     .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
-    
+
+    /* ステータスログ */
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
       font-size: 14px; background: rgba(0,0,0,0.8); border: 1px solid #00ff00;
       padding: 10px; border-radius: 5px; width: 100%;
-      min-height: 40px; word-wrap: break-word; text-align: left;
+      min-height: 50px; word-wrap: break-word; text-align: left;
     }
 
     #rawVideo { display: none; }
@@ -78,11 +73,11 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【手順】</strong><br>
+        <strong>【高精度モード】</strong><br>
         1. 手を選んでボタンをタップ<br>
         2. カメラ許可を「許可」<br>
         3. 画面の指示に従い測定<br>
-        4. <strong>感度高め設定</strong>でプレイ！<br>
+        4. <strong>手ブレ補正ON</strong>でプレイ！<br>
         <br>
         ※反応しない場合は再読み込みしてください
       </div>
@@ -91,35 +86,37 @@
     <div id="right-panel">
       <h1>Thumb Baseball</h1>
       <div id="btn-group" class="btn-container">
-        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
-        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
+        <button class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
+        <button class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
       </div>
-      <div id="statusLog">準備完了。ボタンを押してください。</div>
+      <div id="statusLog">準備完了。<br>ボタンを押してください。</div>
     </div>
   </div>
 
 <script>
-// エラー表示
 window.onerror = function(msg, url, line) {
   const el = document.getElementById('statusLog');
-  if(el) {
-    el.innerHTML = "⚠️ エラー:<br>" + msg;
-    el.style.color = "#ff5555";
-  }
+  if(el) { el.innerHTML = "⚠️ エラー:<br>" + msg; el.style.color = "#ff5555"; }
 };
 
-// グローバル変数
+// --- グローバル変数 ---
 let rawVideo = document.getElementById('rawVideo');
 let hands = null;
 let camera = null;
-let thumbTip = null, indexBase = null, wrist = null;
+let thumbTip = null, indexBase = null, wrist = null, thumbCMC = null;
 let handDetected = false;
 let isGameStarted = false;
 let isRightHand = true; 
 
+// ゲーム状態
 let gameState = 1; 
-let angleClosed = 0, angleOpen = 0, currentAngle = 0;
+
+// ★精度向上のための変数
+let angleClosed = 0, angleOpen = 0;
+let rawAngle = 0;      // 瞬間の値
+let smoothedAngle = 0; // 補正後の値
 let currentCm = 0; 
+
 let fixedWristPosition = null; 
 const ALLOWED_MOVEMENT_RADIUS = 120;
 
@@ -158,28 +155,18 @@ function setup() {
   log("準備OK。ボタンを押してください。");
 }
 
-// --- クリック処理 ---
 function handleClick(hand) {
-  const btnGroup = document.getElementById('btn-group');
-  btnGroup.style.display = 'none';
-  
+  document.getElementById('btn-group').style.display = 'none';
   log("起動中...カメラを許可してください");
-  
-  setTimeout(() => {
-    startSequence(hand);
-  }, 100);
+  setTimeout(() => { startSequence(hand); }, 100);
 }
 
-// --- 起動シーケンス ---
 async function startSequence(hand) {
   isRightHand = (hand === 'right');
   
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if(AudioContext) {
-      audioCtx = new AudioContext();
-      audioCtx.resume();
-    }
+    if(AudioContext) { audioCtx = new AudioContext(); audioCtx.resume(); }
   } catch(e) {}
 
   updateLayout();
@@ -188,19 +175,13 @@ async function startSequence(hand) {
 }
 
 function startCamera() {
-  // ★軽量化: 解像度を落としてFPSを稼ぐ
   const constraints = {
     audio: false,
-    video: { 
-        facingMode: "user", 
-        width: { ideal: 480 }, 
-        height: { ideal: 360 } 
-    }
+    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
   };
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert("このブラウザはカメラ非対応です");
-    return;
+    alert("このブラウザはカメラ非対応です"); return;
   }
 
   navigator.mediaDevices.getUserMedia(constraints)
@@ -208,98 +189,75 @@ function startCamera() {
       rawVideo.srcObject = stream;
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
-        log("AIエンジン読み込み中...");
+        log("AIエンジン読み込み中(高精度)...");
         initMediaPipe(); 
       };
     })
     .catch(err => {
       alert("カメラエラー: " + err.message);
-      log("カメラエラー: " + err.message);
       document.getElementById('btn-group').style.display = 'flex';
     });
 }
 
 function initMediaPipe() {
   if (typeof Hands === 'undefined') {
-    log("AIライブラリ未ロード。リロードしてください。");
-    return;
+    log("AIライブラリ未ロード。リロードしてください。"); return;
   }
 
-  try {
-    hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
-    // ★軽量化: Liteモデルを使用
-    hands.setOptions({
-      maxNumHands: 1, 
-      modelComplexity: 0, 
-      minDetectionConfidence: 0.5, 
-      minTrackingConfidence: 0.5
-    });
-    hands.onResults(onResults);
+  hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
+  
+  // ★修正1: 信頼度を上げて、誤検知を減らす
+  hands.setOptions({
+    maxNumHands: 1, 
+    modelComplexity: 1, // 精度重視 (スマホで重ければ0に戻す)
+    minDetectionConfidence: 0.7, // 0.5 -> 0.7 にアップ
+    minTrackingConfidence: 0.7   // 0.5 -> 0.7 にアップ
+  });
+  
+  hands.onResults(onResults);
 
-    camera = new Camera(rawVideo, {
-      onFrame: async () => { 
-        if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
-          await hands.send({image: rawVideo}); 
-        }
-      },
-      width: 480, height: 360 // 低解像度で処理
-    });
-    
-    camera.start().then(() => {
-      log("完了！ゲーム画面へ...");
-      setTimeout(() => {
-        document.getElementById('overlay').style.display = 'none';
-        isGameStarted = true;
-      }, 500);
-    });
-  } catch(e) {
-    log("AIエラー: " + e);
-  }
+  camera = new Camera(rawVideo, {
+    onFrame: async () => { 
+      if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
+        await hands.send({image: rawVideo}); 
+      }
+    },
+    width: 640, height: 480
+  });
+  
+  camera.start().then(() => {
+    log("完了！ゲーム画面へ...");
+    setTimeout(() => {
+      document.getElementById('overlay').style.display = 'none';
+      isGameStarted = true;
+    }, 500);
+  });
 }
 
 function onResults(results) {
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
+    
+    // 座標取得
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
+    // ★修正2: 親指の付け根(CMC)も取得して角度計算を安定化
+    thumbCMC = createVector((1 - lm[1].x) * width, lm[1].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
-    currentAngle = p5.Vector.sub(indexBase, wrist).angleBetween(p5.Vector.sub(thumbTip, wrist));
+    
+    // 角度計算 (Wrist-Index と Wrist-ThumbTip のなす角)
+    // これが一番「開き具合」として安定している
+    let v1 = p5.Vector.sub(indexBase, wrist);
+    let v2 = p5.Vector.sub(thumbTip, wrist);
+    rawAngle = v1.angleBetween(v2);
+
   } else {
     handDetected = false;
-    thumbTip = null;
-    wrist = null;
   }
 }
 
-function touchStarted() { 
-  if (!isGameStarted) return true; 
-  if (gameState === 5 || gameState === 4) resetGame();
-  handleInput();
-  return false; 
-}
-
-function mousePressed() { 
-  if (!isGameStarted) return true;
-  if (gameState === 5 || gameState === 4) resetGame();
-  handleInput();
-}
-
-function playHitSound() {
-  if (!audioCtx) return;
-  const osc = audioCtx.createOscillator();
-  const gain = audioCtx.createGain();
-  osc.connect(gain);
-  gain.connect(audioCtx.destination);
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-  osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
-  gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-  gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
-  osc.start();
-  osc.stop(audioCtx.currentTime + 0.1);
-}
-
+// --- メインループ ---
 function draw() {
   background(0);
   
@@ -321,6 +279,14 @@ function draw() {
     pop();
   }
 
+  // ★修正3: スムージング処理 (線形補間)
+  // 生の角度(rawAngle)に、少しずつ近づけることで手ブレを除去する
+  // 0.2 は「追従速度」。小さいほど滑らかだが遅れる。0.2はバランスが良い。
+  if (handDetected) {
+    if (smoothedAngle === 0) smoothedAngle = rawAngle; // 初期化
+    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.2);
+  }
+
   handleInput();
   drawPanels();
   drawAlwaysGuide();
@@ -339,16 +305,28 @@ function draw() {
 
 function handleInput() {
   if (gameState === 5 || gameState === 4) return;
-  if (handDetected && thumbTip && wrist) {
+  if (handDetected) {
     if (gameState === 1) { 
-        angleClosed = currentAngle; 
+        angleClosed = smoothedAngle; // 補正後の値を使用
         gameState = 2; 
     } else if (gameState === 2) { 
-        angleOpen = currentAngle; 
+        angleOpen = smoothedAngle;   // 補正後の値を使用
         fixedWristPosition = createVector(wrist.x, wrist.y);
         gameState = 3; 
     }
   }
+}
+
+function touchStarted() { 
+  if (!isGameStarted) return true; 
+  if (gameState === 5 || gameState === 4) resetGame();
+  handleInput();
+  return false; 
+}
+function mousePressed() { 
+  if (!isGameStarted) return true;
+  if (gameState === 5 || gameState === 4) resetGame();
+  handleInput();
 }
 
 function resetGame() {
@@ -469,10 +447,8 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // ★感度ブースト設定：動きの幅を1.5倍に拡張
-  let rawProgress = map(currentAngle, angleClosed, angleOpen, 0, 1);
-  let progress = constrain(rawProgress * 1.5, 0, 1); // 1.5倍感度
-  
+  // ★補正後の smoothedAngle を使用
+  let progress = constrain(map(smoothedAngle, angleClosed, angleOpen, 0, 1), 0, 1);
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
@@ -497,8 +473,10 @@ function playGame() {
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i]; b.update(); b.display();
     
+    // ガイド内判定
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
     let inZone = (distToGuide < 100); 
+    // 感度マシマシ（判定を広げる）
     let hitThreshold = 300; 
     
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
@@ -534,6 +512,22 @@ function checkLevelUp() {
   if (score > 0 && score % 10 === 0) { level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0)); }
 }
 
+function playHitSound() {
+  if (audioCtx && audioCtx.state === 'running') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+    osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.1);
+  }
+}
+
 function drawGameUI(progress) {
   fill(255); stroke(0); strokeWeight(4);
   textAlign(RIGHT, TOP); textSize(32); 
@@ -566,7 +560,6 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
-    // 修正：右手＝左からボール / 左手＝右からボール
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
     this.startY = height * 0.6; 
     this.x = this.startX; this.y = this.startY; 
