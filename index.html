@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Direction Fix</title>
+  <title>Thumb Baseball - Final Fixed</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -50,7 +50,6 @@
       min-height: 40px; word-wrap: break-word; text-align: left;
     }
 
-    /* 反転ボタン */
     #invertBtn {
       display: none; position: absolute; top: 10px; left: 10px;
       padding: 8px 16px; font-size: 14px; font-weight: bold;
@@ -70,7 +69,7 @@
 
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
   
-  <button id="invertBtn" onclick="toggleDirection()">🔄 スイング方向を反転</button>
+  <button id="invertBtn" onclick="toggleDirection()">🔄 スイング方向を切替</button>
 
   <div id="overlay">
     <div id="left-panel">
@@ -81,7 +80,7 @@
         3. <strong>親指を開いて</strong>タップ（SWING位置）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small>※スイングの向きが逆の場合は、左上の「反転ボタン」を押してください。</small>
+        <small><strong>閉じる</strong>：外側で構える<br><strong>開く</strong>：内側へ振る</small>
       </div>
     </div>
 
@@ -126,11 +125,11 @@ let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
 let audioCtx = null;
 
-// ■ スイング方向制御フラグ
-// true にするとスイングの開始位置と終了位置が入れ替わります
-let isReverseSwing = true; 
+// フラグ: false = 「閉じて外、開いて内」 (ご希望の動作)
+let isReverseSwing = false; 
 
-let batRangeStart, batRangeEnd; 
+// バットの可動範囲定義用
+let batOuterX, batInnerX; 
 let guidePositionX, guidePositionY;
 let panelStartX;
 
@@ -208,7 +207,7 @@ function toggleDirection() {
   isReverseSwing = !isReverseSwing;
   const btn = document.getElementById('invertBtn');
   btn.style.background = isReverseSwing ? "#5555ff" : "#444";
-  btn.innerText = isReverseSwing ? "🔄 反転中" : "🔄 スイング方向を反転";
+  btn.innerText = isReverseSwing ? "🔄 切替: 外→内" : "🔄 切替: 内→外";
 }
 
 async function startSequence(hand) {
@@ -329,11 +328,16 @@ function windowResized() {
 }
 
 function updateLayout() {
-  // ■ 位置設定（デフォルト）
+  // ■ 修正: 親指閉(Wait) = 画面端(Outer), 親指開(Swing) = 画面中央(Inner)
+  
   if (isRightHand) {
-    batRangeStart = width * 0.80; batRangeEnd = width * 0.50; guidePositionX = width * 0.85;
+    batOuterX = width * 0.85; // 右端 (閉じたときの位置)
+    batInnerX = width * 0.50; // 中央 (開いたときの位置)
+    guidePositionX = width * 0.85;
   } else {
-    batRangeStart = width * 0.20; batRangeEnd = width * 0.50; guidePositionX = width * 0.15;
+    batOuterX = width * 0.15; // 左端 (閉じたときの位置)
+    batInnerX = width * 0.50; // 中央 (開いたときの位置)
+    guidePositionX = width * 0.15;
   }
   guidePositionY = height * 0.75;
 }
@@ -439,21 +443,25 @@ function playGame() {
   if (rawProgress < 0.1) rawProgress = 0; // デッドゾーン
   let progress = constrain(rawProgress, 0, 1);
 
-  // ■ スイング方向の計算
-  let batX, rotateAngle;
+  // ■ 動作ロジック
+  // progress 0 (閉) => 外側 (batOuterX)
+  // progress 1 (開) => 内側 (batInnerX)
   
-  if (isReverseSwing) {
-      // 反転モード：End -> Start（逆方向）
-      batX = map(progress, 0, 1, batRangeEnd, batRangeStart);
-      // 回転も逆
-      if (isRightHand) rotateAngle = map(progress, 0, 1, -PI/4, PI/4);
-      else rotateAngle = map(progress, 0, 1, PI/4, -PI/4);
+  let startX, endX;
+  if (!isReverseSwing) {
+    startX = batOuterX; 
+    endX = batInnerX;   
   } else {
-      // 通常モード：Start -> End
-      batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
-      if (isRightHand) rotateAngle = map(progress, 0, 1, PI/4, -PI/4);
-      else rotateAngle = map(progress, 0, 1, -PI/4, PI/4);
+    startX = batInnerX;
+    endX = batOuterX;
   }
+
+  let batX = map(progress, 0, 1, startX, endX);
+  
+  // バットの角度も進行度に合わせて回転
+  let rotateAngle;
+  if (isRightHand) rotateAngle = map(progress, 0, 1, PI/4, -PI/4); // 右手: 外(右)から内へ
+  else rotateAngle = map(progress, 0, 1, -PI/4, PI/4); // 左手: 外(左)から内へ
   
   let isBatActive = (progress >= 0.1); 
   let batY = guidePositionY - 80;
@@ -582,7 +590,7 @@ class Ball {
     else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
     let targetX;
     
-    // ■ ヒット時の飛球方向もスイングに合わせて調整
+    // ヒット時の飛球方向もスイングに合わせて調整
     let normalizedProgress = progress;
     if(isReverseSwing) normalizedProgress = 1.0 - progress;
 
@@ -600,3 +608,4 @@ class Ball {
 </script>
 </body>
 </html>
+
