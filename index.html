@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Reversible</title>
+  <title>Thumb Baseball - High Response</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
@@ -42,6 +42,7 @@
     }
     .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
     
+    /* ログ */
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
       font-size: 14px; background: #222; border: 1px solid #555;
@@ -49,10 +50,9 @@
       min-height: 40px; word-wrap: break-word; text-align: left;
     }
 
-    /* ゲーム中の反転ボタン */
+    /* 反転ボタン */
     #invertBtn {
-      display: none; /* ゲーム開始後に表示 */
-      position: absolute; top: 10px; left: 10px;
+      display: none; position: absolute; top: 10px; left: 10px;
       padding: 10px 20px; font-size: 16px; font-weight: bold;
       background: #ff5555; color: white; border: 2px solid white; border-radius: 50px;
       z-index: 2000; cursor: pointer;
@@ -68,17 +68,18 @@
 <body>
 
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
-
   <button id="invertBtn" onclick="toggleInvert()">🔄 動きを反転</button>
 
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【トラブル解決】</strong><br>
-        動きが逆になる場合は<br>
-        ゲーム画面左上の<br>
-        <strong>「🔄 動きを反転」</strong><br>
-        ボタンを押してください。
+        <strong>【手順】</strong><br>
+        1. 手を選んでボタンをタップ<br>
+        2. カメラ許可後、親指を閉じてタップ<br>
+        3. 親指を開いてタップ<br>
+        ➜ <strong>即ゲーム開始！</strong><br>
+        <br>
+        ※動きが逆なら左上のボタンで反転
       </div>
     </div>
 
@@ -124,8 +125,6 @@ let combo = 0;
 let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
 let audioCtx = null;
-
-// 反転フラグ
 let isInverted = false;
 
 let batRangeStart, batRangeEnd; 
@@ -153,10 +152,8 @@ function handleClick(hand) {
   setTimeout(() => { startSequence(hand); }, 100);
 }
 
-// 反転ボタンの処理
 function toggleInvert() {
   isInverted = !isInverted;
-  // ボタンの色を変えてフィードバック
   const btn = document.getElementById('invertBtn');
   btn.style.background = isInverted ? "#5555ff" : "#ff5555";
   btn.innerText = isInverted ? "🔄 現在:反転中" : "🔄 動きを反転";
@@ -225,7 +222,7 @@ function initMediaPipe() {
     log("完了！ゲーム画面へ...");
     setTimeout(() => {
       document.getElementById('overlay').style.display = 'none';
-      document.getElementById('invertBtn').style.display = 'block'; // 反転ボタン表示
+      document.getElementById('invertBtn').style.display = 'block';
       isGameStarted = true;
     }, 500);
   });
@@ -270,12 +267,18 @@ function draw() {
     pop();
   }
 
+  // 骨組み
+  if (handDetected && wrist && thumbTip) {
+    stroke(255, 0, 0); strokeWeight(2); 
+    line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+  }
+
   handleInput();
   drawPanels();
   drawAlwaysGuide();
 
   if (gameState === 3) {
-    checkHandStability();
+    // プレイ中
     playGame();
   } else if (gameState === 4) {
     drawErrorScreen();
@@ -291,31 +294,34 @@ function handleInput() {
   if (handDetected) {
     if (gameState === 1) { 
         angleClosed = smoothedAngle; 
-        gameState = 2; 
+        gameState = 2; // 次へ
     } else if (gameState === 2) { 
         angleOpen = smoothedAngle;
         let diff = abs(angleOpen - angleClosed);
-        if (diff < 0.05) { // 警告閾値を緩和
-            showMessage("動きが小さすぎます！\nやり直してください", color(255, 50, 50));
-            gameState = 1; 
-        } else {
-            fixedWristPosition = createVector(wrist.x, wrist.y);
-            gameState = 3; 
-        }
+        
+        // 差が小さくても警告せず、とりあえず始める（ユーザー体験優先）
+        fixedWristPosition = createVector(wrist.x, wrist.y);
+        gameState = 3; // 即ゲーム開始！
+        showMessage("START!", color(255, 255, 0));
     }
   }
 }
 
 function touchStarted() { 
   if (!isGameStarted) return true; 
+  // 画面タップで計測を進める
+  if (gameState === 1 || gameState === 2) {
+      handleInput();
+  }
   if (gameState === 5 || gameState === 4) resetGame();
-  handleInput();
   return false; 
 }
 function mousePressed() { 
   if (!isGameStarted) return true;
+  if (gameState === 1 || gameState === 2) {
+      handleInput();
+  }
   if (gameState === 5 || gameState === 4) resetGame();
-  handleInput();
 }
 
 function resetGame() {
@@ -395,7 +401,9 @@ function drawAlwaysGuide() {
   let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
   let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
   if (handDetected) {
-    stroke(0, 255, 0); if (gameState < 3) fill(0, 255, 0, 50);
+    stroke(0, 255, 0); 
+    // 測定中だけ色付け
+    if (gameState < 3) fill(0, 255, 0, 50);
   } else {
     stroke(255, 0, 0); noFill();
   }
@@ -404,8 +412,13 @@ function drawAlwaysGuide() {
 }
 
 function checkHandStability() {
+  // ゲーム中は手を多少動かしてもOKにする（感度優先）
   if (!wrist || !fixedWristPosition) return;
-  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > ALLOWED_MOVEMENT_RADIUS) gameState = 4;
+  // 許容範囲を大幅に拡大 (120 -> 200)
+  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > 200) {
+    // 警告は出すが止めない
+    // gameState = 4; 
+  }
 }
 
 function drawSetupUI() {
@@ -415,21 +428,19 @@ function drawSetupUI() {
 
   if (!handDetected) { text("カメラに手を映してください", width/2, height/2); return; }
   
-  let currentVal = degrees(smoothedAngle).toFixed(0);
-  
   if (gameState === 1) {
-      text(`【設定1/2】親指を閉じてタップ\n現在値: ${currentVal}`, uiX + textOffset, uiY);
+      text(`【設定1/2】親指を閉じてタップ`, uiX + textOffset, uiY);
   } else if (gameState === 2) {
-      text(`【設定2/2】親指を開いてタップ\n現在値: ${currentVal}`, uiX + textOffset, uiY);
+      text(`【設定2/2】親指を開いてタップ`, uiX + textOffset, uiY);
   }
 }
 
 function drawErrorScreen() {
   fill(0, 150); rect(0, 0, width, height);
   textAlign(CENTER, CENTER); textSize(40); fill(255, 50, 50); stroke(255); strokeWeight(5);
-  text("手が動きました！", width/2, height/2 - 50);
+  text("手が動きすぎです！", width/2, height/2 - 50);
   textSize(24); fill(255); noStroke();
-  text("手首を丸の位置に戻してください。\n画面タップでリセット", width/2, height/2 + 50);
+  text("手首を固定してください。\n画面タップで再開", width/2, height/2 + 50);
 }
 
 function drawGameOverScreen() {
@@ -443,26 +454,26 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // ★可動域の計算
   let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
   let progress = constrain(rawProgress, 0, 1);
 
-  // ★反転ロジック（ボタンで切り替え）
   if (isInverted) {
     progress = 1.0 - progress;
   }
+  
+  // ★感度向上：遊びを極限まで減らす (0.05以上で反応)
+  let isBatActive = (progress >= 0.05); 
   
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
   
-  // 10%以上で反応
-  let isBatActive = (progress >= 0.1); 
+  let batBaseLen = 140;
+  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
-  
   if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
   else rotate(map(progress, 0, 1, -PI/4, PI/4));
   
@@ -485,9 +496,10 @@ function playGame() {
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i]; b.update(); b.display();
     
+    // ★感度向上：当たり判定を大幅拡大 (100 -> 150, threshold -> 400)
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    let inZone = (distToGuide < 100); 
-    let hitThreshold = 300; 
+    let inZone = (distToGuide < 150); 
+    let hitThreshold = 400; 
     
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
       playHitSound(); b.hit(progress); 
@@ -553,12 +565,12 @@ function drawGameUI(progress) {
   fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
   fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
   text("現在の可動域", uiX + uiW/2, uiY + 5);
-  textSize(30); textStyle(BOLD); text(currentCm.toFixed(1) + " cm", uiX + uiW/2, uiY + 30);
+  textSize(30); textStyle(BOLD); text((progress*100).toFixed(0) + " %", uiX + uiW/2, uiY + 30);
 
   let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
   stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
   
-  if (progress < 0.1) fill(100); 
+  if (progress < 0.05) fill(100); 
   else fill(255, map(progress,0,1,100,255), 0);
   
   rect(barX, barY, map(progress, 0, 1, 0, barW), 10); 
