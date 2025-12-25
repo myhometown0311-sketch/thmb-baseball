@@ -1,527 +1,136 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Rehab - Precision Control</title>
-  <style>
-    body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: "Helvetica Neue", Arial, sans-serif; touch-action: manipulation; }
+import cv2
+import mediapipe as mp
+import numpy as np
+
+# --- 1. 関数定義: 3点間の角度を算出 ---
+def calculate_angle(a, b, c):
+    """
+    3つの座標(a, b, c)から、bを中心とした角度(0〜180度)を計算する関数
+    a: 起点 (例: MCP関節)
+    b: 中心点 (例: IP関節)
+    c: 終点 (例: 指先)
+    """
+    a = np.array(a) # First
+    b = np.array(b) # Mid
+    c = np.array(c) # End
     
-    canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
+    # ラジアンから角度を計算
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    angle = np.abs(radians*180.0/np.pi)
     
-    /* オーバーレイ（設定・フィードバック画面） */
-    #overlay {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0, 0, 0, 0.95);
-      display: flex; flex-direction: row; 
-      justify-content: center; align-items: center;
-      z-index: 1000; color: white; text-align: center;
-      pointer-events: auto;
-    }
+    # 180度を超える場合は補正（内角を取るため）
+    if angle > 180.0:
+        angle = 360 - angle
+        
+    return angle
 
-    #left-panel { width: 45%; padding: 20px; display: flex; flex-direction: column; justify-content: center; }
-    #instruction {
-      background: rgba(0, 50, 0, 0.5);
-      border: 2px solid #00ff00;
-      border-radius: 12px; padding: 20px;
-      font-size: 16px; line-height: 1.8; color: white;
-      text-align: left; width: 90%;
-    }
+# --- 2. 初期設定 ---
+mp_drawing = mp.solutions.drawing_utils
+mp_hands = mp.solutions.hands
 
-    #right-panel { width: 45%; padding: 20px; display: flex; flex-direction: column; align-items: center; }
+# Webカメラの起動
+cap = cv2.VideoCapture(0)
+
+# MediaPipe Handsのセットアップ
+with mp_hands.Hands(
+    min_detection_confidence=0.7, # 検出の信頼度閾値
+    min_tracking_confidence=0.5,  # 追跡の信頼度閾値
+    max_num_hands=1               # 片手のみ検出
+) as hands:
     
-    h1 { margin: 0 0 20px 0; font-size: 32px; color: #00ff00; text-shadow: 0 0 10px #00ff00; }
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        
+        # 1. 画像の左右反転（鏡として使うため）
+        frame = cv2.flip(frame, 1)
+        
+        # 2. BGRからRGBへ変換
+        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image.flags.writeable = False
+        
+        # 3. 推論（検出）実行
+        results = hands.process(image)
+        
+        # 4. RGBからBGRへ戻す
+        image.flags.writeable = True
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        
+        # ランドマークが検出された場合の処理
+        if results.multi_hand_landmarks:
+            for hand_landmarks in results.multi_hand_landmarks:
+                
+                # --- 座標の取得 ---
+                h, w, _ = image.shape
+                
+                # 親指のランドマークインデックス:
+                # 2: CM関節 (CMC) - 手首に近い付け根
+                # 3: MP関節 (MCP) - 親指の付け根
+                # 4: IP関節 (Tip) - 親指の先端
+                # ※ここではMP関節(2)・IP関節(3)・指先(4)を使って、IP関節の屈曲角度を見ます
+                
+                # 座標抽出
+                p2 = [hand_landmarks.landmark[2].x * w, hand_landmarks.landmark[2].y * h] # MCP
+                p3 = [hand_landmarks.landmark[3].x * w, hand_landmarks.landmark[3].y * h] # IP
+                p4 = [hand_landmarks.landmark[4].x * w, hand_landmarks.landmark[4].y * h] # Tip
+                
+                # 角度計算 (IP関節を中心とした角度)
+                angle = calculate_angle(p2, p3, p4)
+                
+                # --- 判定ロジック (逆転防止済み) ---
+                # 親指が伸びている(Open) = 180度に近い
+                # 親指が曲がっている(Close) = 角度が小さい
+                
+                if angle > 160:
+                    stage = "Open"
+                    status_color = (0, 255, 0) # 緑
+                elif angle < 100: # 閾値は調整可能
+                    stage = "Close"
+                    status_color = (0, 0, 255) # 赤
+                else:
+                    stage = "Moving"
+                    status_color = (255, 255, 0) # 黄
+                
+                # --- 描画処理 ---
+                
+                # 1. 骨格の描画
+                mp_drawing.draw_landmarks(
+                    image, hand_landmarks, mp_hands.HAND_CONNECTIONS,
+                    mp_drawing.DrawingSpec(color=(121, 22, 76), thickness=2, circle_radius=4),
+                    mp_drawing.DrawingSpec(color=(250, 44, 250), thickness=2, circle_radius=2),
+                )
+                
+                # 2. 関節部分への数値表示
+                cv2.putText(image, str(int(angle)), 
+                            tuple(np.multiply(p3, [1, 1]).astype(int)), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+                
+                # 3. 画面上の情報表示パネル（ゲージ削除済み・数値強調）
+                # 背景ボックス
+                cv2.rectangle(image, (0,0), (250, 85), (245, 117, 16), -1)
+                
+                # テキスト: 可動域角度 (ROM Angle)
+                cv2.putText(image, 'ROM Angle', (15,20), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
+                cv2.putText(image, str(int(angle)) + " deg", 
+                            (15,70), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 2, cv2.LINE_AA)
+                
+                # テキスト: 状態 (Status)
+                cv2.putText(image, 'Status', (140,20), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,0), 1, cv2.LINE_AA)
+                cv2.putText(image, stage, 
+                            (140,70), 
+                            cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255,255,255), 2, cv2.LINE_AA)
 
-    .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; }
+        # 画面出力
+        cv2.imshow('Thumb ROM Analysis', image)
 
-    .hand-btn {
-      padding: 25px 0; font-size: 24px; font-weight: bold;
-      color: #fff; background: #008800; border: 3px solid #fff; border-radius: 15px; 
-      cursor: pointer; width: 100%; 
-      box-shadow: 0 5px 15px rgba(0, 255, 0, 0.3);
-      transition: all 0.2s;
-    }
-    .hand-btn:active { background: #00bb00; transform: scale(0.98); }
-    
-    /* 測定結果表示エリア */
-    #resultArea {
-      display: none; /* 最初は隠す */
-      background: #fff; color: #000; padding: 20px; border-radius: 10px;
-      margin-top: 20px; width: 90%;
-    }
-    #romResult { font-size: 40px; font-weight: bold; color: #d00; }
+        # 'q'キーで終了
+        if cv2.waitKey(10) & 0xFF == ord('q'):
+            break
 
-    #rawVideo { display: none; }
+cap.release()
+cv2.destroyAllWindows()
 
-    @media (orientation: portrait) {
-      #overlay { flex-direction: column; }
-      #left-panel, #right-panel { width: 90%; }
-    }
-  </style>
-  
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
-</head>
-<body>
-
-  <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
-
-  <div id="overlay">
-    <div id="left-panel">
-      <div id="instruction">
-        <strong>【リハビリテーション設定】</strong><br>
-        <br>
-        正確な可動域測定を行います。<br>
-        <br>
-        1. <strong>測定①（0cm）</strong><br>
-           親指を人差し指につけ、リラックスした状態でタップ。<br>
-        <br>
-        2. <strong>測定②（MAX）</strong><br>
-           親指を可能な限り大きく開き、キープしてタップ。<br>
-      </div>
-    </div>
-
-    <div id="right-panel">
-      <h1>Thumb Rehab</h1>
-      
-      <div id="btn-group" class="btn-container">
-        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手で測定開始</button>
-        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手で測定開始</button>
-      </div>
-
-      <div id="statusLog" style="margin-top:20px; font-size:18px; color:#aaa;">準備完了</div>
-
-      <div id="resultArea">
-        <div>あなたの可動域</div>
-        <div id="romResult">-- cm</div>
-        <button class="hand-btn" style="margin-top:10px; background:#d00;" onclick="startGame()">トレーニング開始</button>
-      </div>
-    </div>
-  </div>
-
-<script>
-window.onerror = function(msg, url, line) {
-  const el = document.getElementById('statusLog');
-  if(el) { el.innerHTML = "⚠️ エラー:<br>" + msg; el.style.color = "#ff5555"; }
-};
-
-let rawVideo = document.getElementById('rawVideo');
-let hands = null;
-let camera = null;
-let thumbTip = null, indexBase = null, wrist = null;
-let handDetected = false;
-let isGameStarted = false;
-let isRightHand = true; 
-
-// 測定・制御用変数
-let gameState = 1; // 1:閉測定, 2:開測定, 3:結果表示, 4:ゲーム中
-let angleClosed = 0, angleOpen = 0;
-let smoothedAngle = 0; 
-let maxRangeCM = 0; // 最大可動域(cm)
-let currentDisplayCM = 0; // 現在の表示(cm)
-
-let balls = [];
-let panels = []; 
-let score = 0;
-let lives = 5; // リハビリようなのでライフ多め
-let combo = 0;
-
-let message = "", messageTimer = 0, messageColor;
-let bgImage = null;
-let audioCtx = null;
-
-let batRangeStart, batRangeEnd; 
-let guidePositionX, guidePositionY;
-let panelStartX, panelStartY;
-
-function log(msg) {
-  const el = document.getElementById('statusLog');
-  if(el) el.innerHTML = msg;
-}
-
-function setup() {
-  pixelDensity(1);
-  let cnv = createCanvas(windowWidth, windowHeight);
-  cnv.style('z-index', '-1'); 
-  loadImage('stadium_bg.png', (img) => { bgImage = img; });
-  updateLayout();
-  initPanels();
-}
-
-function handleClick(hand) {
-  document.getElementById('btn-group').style.display = 'none';
-  log("カメラ起動中...");
-  setTimeout(() => { startSequence(hand); }, 100);
-}
-
-async function startSequence(hand) {
-  isRightHand = (hand === 'right');
-  try {
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if(AudioContext) { audioCtx = new AudioContext(); audioCtx.resume(); }
-  } catch(e) {}
-  updateLayout();
-  initPanels();
-  startCamera();
-}
-
-function startCamera() {
-  const constraints = {
-    audio: false,
-    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
-  };
-
-  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert("カメラ非対応です"); return;
-  }
-
-  navigator.mediaDevices.getUserMedia(constraints)
-    .then(stream => {
-      rawVideo.srcObject = stream;
-      rawVideo.onloadedmetadata = () => {
-        rawVideo.play();
-        log("手をカメラに合わせてください");
-        initMediaPipe(); 
-      };
-    })
-    .catch(err => {
-      alert("カメラエラー: " + err.message);
-    });
-}
-
-function initMediaPipe() {
-  if (typeof Hands === 'undefined') {
-    log("AI読込エラー。リロードしてください。"); return;
-  }
-
-  hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
-  hands.setOptions({
-    maxNumHands: 1, 
-    modelComplexity: 1, 
-    minDetectionConfidence: 0.7, 
-    minTrackingConfidence: 0.7
-  });
-  hands.onResults(onResults);
-
-  camera = new Camera(rawVideo, {
-    onFrame: async () => { 
-      if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
-        await hands.send({image: rawVideo}); 
-      }
-    },
-    width: 640, height: 480
-  });
-  
-  camera.start();
-}
-
-function onResults(results) {
-  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    handDetected = true;
-    const lm = results.multiHandLandmarks[0];
-    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
-    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
-    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
-    
-    // 角度計算
-    let v1 = p5.Vector.sub(indexBase, wrist);
-    let v2 = p5.Vector.sub(thumbTip, wrist);
-    let rawAngle = v1.angleBetween(v2);
-    
-    if (smoothedAngle === 0) smoothedAngle = rawAngle;
-    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.2); 
-  } else {
-    handDetected = false;
-  }
-}
-
-function draw() {
-  background(30); // 集中しやすいダークグレー背景
-  if (bgImage && gameState === 4) { // ゲーム中のみ背景画像
-    let imgAspect = bgImage.width / bgImage.height;
-    let canvasAspect = width / height;
-    let dw, dh, dx, dy;
-    if (canvasAspect > imgAspect) { dw=width; dh=width/imgAspect; dx=0; dy=(height-dh)/2; }
-    else { dh=height; dw=height*imgAspect; dy=0; dx=(width-dw)/2; }
-    tint(100); // 少し暗くしてボールを見やすく
-    image(bgImage, dx, dy, dw, dh);
-    noTint();
-  }
-
-  if (rawVideo && rawVideo.readyState >= 2) {
-    push();
-    translate(width, 0); scale(-1, 1); 
-    // 測定中は映像をはっきり、ゲーム中は薄く
-    tint(255, gameState < 4 ? 200 : 80);
-    drawingContext.drawImage(rawVideo, 0, 0, width, height);
-    pop();
-  }
-
-  // 骨組み描画（常に表示してフォームを確認させる）
-  if (handDetected && wrist && thumbTip) {
-    stroke(0, 255, 0); strokeWeight(3); 
-    line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
-    line(wrist.x, wrist.y, indexBase.x, indexBase.y);
-    fill(255); noStroke();
-    ellipse(thumbTip.x, thumbTip.y, 15, 15);
-  }
-
-  // 状態ごとの処理
-  if (gameState === 4) {
-    playGame();
-  } else if (gameState < 3) {
-    drawMeasurementGuide();
-  }
-}
-
-function drawMeasurementGuide() {
-  // ガイド円
-  let cx = isRightHand ? width * 0.8 : width * 0.2;
-  let cy = height / 2;
-  
-  noFill(); stroke(0, 255, 0); strokeWeight(4);
-  ellipse(cx, cy, 150, 150);
-  
-  textAlign(CENTER); textSize(24); fill(255); noStroke();
-  let statusText = "";
-  if (!handDetected) {
-    statusText = "カメラに手を映してください";
-  } else {
-    if (gameState === 1) statusText = "【測定1】親指を閉じて\n画面をタップ";
-    else if (gameState === 2) statusText = "【測定2】親指を最大まで開いて\n画面をタップ";
-  }
-  text(statusText, cx, cy - 120);
-}
-
-function handleInput() {
-  if (!handDetected) return;
-
-  if (gameState === 1) { 
-      angleClosed = smoothedAngle; 
-      gameState = 2; 
-      log("閉じた位置を記録しました");
-  } else if (gameState === 2) { 
-      angleOpen = smoothedAngle;
-      
-      // 可動域計算 (単純な角度差ではなく、推定CMに換算)
-      let diff = abs(angleOpen - angleClosed);
-      
-      // 警告: 差が小さすぎる
-      if (diff < 0.05) {
-          alert("動きが小さすぎます。手首を固定して親指だけ動かしてください。");
-          gameState = 1; // やり直し
-          return;
-      }
-      
-      // 推定CM換算 (角度ラジアン * 指の長さ推定)
-      // 指の長さを画面比率からざっくり10cm相当と仮定して計算
-      // 実際は相対値だが、ユーザーへのフィードバックとしてCMを使う
-      let estimatedFingerLen = 10.0; 
-      maxRangeCM = diff * estimatedFingerLen; 
-      
-      showResult();
-  }
-}
-
-function showResult() {
-  gameState = 3;
-  document.getElementById('instruction').style.display = 'none';
-  document.getElementById('resultArea').style.display = 'block';
-  document.getElementById('romResult').innerText = maxRangeCM.toFixed(1) + " cm";
-  log("測定完了。この可動域でゲーム設定を行います。");
-}
-
-function startGame() {
-  document.getElementById('overlay').style.display = 'none';
-  gameState = 4;
-}
-
-function touchStarted() { 
-  if (gameState < 3) handleInput();
-  return false; 
-}
-function mousePressed() { 
-  if (gameState < 3) handleInput();
-}
-
-function playGame() {
-  // ★リハビリ用制御ロジック
-  // 現在の角度を、測定した min/max に基づいて 0.0〜1.0 に正規化
-  // 補正は一切かけない。ユーザーの生入力を使う。
-  let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
-  
-  // 範囲外も許容するが、バットの位置計算ではクリップする
-  let displayProgress = constrain(rawProgress, 0, 1);
-  
-  // 現在のCM換算
-  currentDisplayCM = rawProgress * maxRangeCM;
-  if(currentDisplayCM < 0) currentDisplayCM = 0;
-
-  // バット位置 (リニア)
-  let batX = map(displayProgress, 0, 1, batRangeStart, batRangeEnd);
-  let batY = map(displayProgress, 0, 1, height - 100, height - 250);
-  
-  // バット描画
-  push();
-  translate(batX, batY);
-  if (isRightHand) rotate(map(displayProgress, 0, 1, PI/4, -PI/4));
-  else rotate(map(displayProgress, 0, 1, -PI/4, PI/4));
-  
-  // 色で力を表現 (開くほど赤く)
-  fill(lerpColor(color(0, 255, 0), color(255, 0, 0), displayProgress));
-  stroke(0); strokeWeight(2);
-  rect(-10, -100, 20, 100, 5); 
-  pop();
-
-  // ボール処理
-  if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball());
-
-  for (let i = balls.length - 1; i >= 0; i--) {
-    let b = balls[i]; b.update(); b.display();
-    
-    // 当たり判定 (厳密に)
-    let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    let inZone = (distToGuide < 150); 
-    
-    // バット先端との距離
-    // バットの角度計算
-    let rot = isRightHand ? map(displayProgress, 0, 1, PI/4, -PI/4) : map(displayProgress, 0, 1, -PI/4, PI/4);
-    let tipX = batX + sin(rot) * 80;
-    let tipY = batY - cos(rot) * 80; // 上方向
-    
-    let hitDist = dist(b.x, b.y, tipX, tipY);
-
-    if (!b.isHit && inZone && hitDist < 60) { // 60px以内でヒット
-      playHitSound();
-      b.hit(displayProgress); 
-    }
-
-    if (b.isHit) {
-      // パネル判定
-      for (let p of panels) {
-        if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
-          p.active = false; score++; 
-          if(panels.every(p=>!p.active)) initPanels();
-          balls.splice(i, 1); break;
-        }
-      }
-    } else if (b.y > height || b.x < 0 || b.x > width) {
-       balls.splice(i, 1);
-    }
-  }
-  
-  drawRehabUI(displayProgress);
-  drawPanels();
-}
-
-function drawRehabUI(progress) {
-  // 画面左側に詳細なゲージを表示
-  let barW = 30;
-  let barH = 300;
-  let barX = 20;
-  let barY = height / 2 - barH / 2;
-  
-  // 背景
-  fill(50); stroke(255);
-  rect(barX, barY, barW, barH);
-  
-  // 現在値
-  let fillH = progress * barH;
-  fill(0, 255, 0); noStroke();
-  rect(barX, barY + barH - fillH, barW, fillH);
-  
-  // 目盛り線 (0cm, Max cm)
-  stroke(255);
-  line(barX, barY + barH, barX + 40, barY + barH); // 0
-  line(barX, barY, barX + 40, barY); // Max
-  
-  fill(255); textSize(16); textAlign(LEFT, CENTER); noStroke();
-  text("0cm", barX + 45, barY + barH);
-  text(maxRangeCM.toFixed(1) + "cm", barX + 45, barY);
-  
-  // 現在の数値
-  textSize(32); textStyle(BOLD); fill(255, 255, 0);
-  text(currentDisplayCM.toFixed(1) + " cm", barX + 45, barY + barH - fillH);
-  
-  textAlign(RIGHT, TOP);
-  text(`Score: ${score}`, width - 20, 20);
-}
-
-function playHitSound() {
-  if (audioCtx && audioCtx.state === 'running') {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain); gain.connect(audioCtx.destination);
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
-    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-  }
-}
-
-function initPanels() {
-  panels = [];
-  let panelW = width * 0.08; let panelH = height * 0.12;
-  // 右手なら左側に的、左手なら右側に的
-  let startX = isRightHand ? width * 0.1 : width * 0.7; 
-  let startY = height * 0.2;
-  
-  for(let i=0; i<3; i++) { // 縦3つ
-      panels.push({
-          x: startX, y: startY + i * (panelH + 20),
-          w: panelW, h: panelH, row: i, active: true
-      });
-  }
-}
-
-function updateLayout() {
-  if (isRightHand) {
-    batRangeStart = width * 0.8; batRangeEnd = width * 0.6; guidePositionX = width * 0.8;
-  } else {
-    batRangeStart = width * 0.2; batRangeEnd = width * 0.4; guidePositionX = width * 0.2;
-  }
-  guidePositionY = height * 0.7;
-}
-
-class Ball {
-  constructor() {
-    // 逆サイドから投げる
-    this.startX = isRightHand ? 0 : width;
-    this.startY = height * 0.4;
-    this.x = this.startX; this.y = this.startY;
-    
-    // ガイド（バットの位置）に向かって投げる
-    let targetX = guidePositionX;
-    let targetY = guidePositionY;
-    
-    let dx = targetX - this.startX;
-    let dy = targetY - this.startY;
-    let dist = sqrt(dx*dx + dy*dy);
-    
-    let speed = 5;
-    this.vx = (dx/dist) * speed;
-    this.vy = (dy/dist) * speed;
-    
-    this.isHit = false;
-    this.ballColor = color(255);
-  }
-  update() { this.x += this.vx; this.y += this.vy; }
-  display() { fill(this.ballColor); ellipse(this.x, this.y, 20); }
-  hit(progress) {
-    this.isHit = true; this.ballColor = color(255, 255, 0);
-    // 打ち返す方向：開き具合によって高さを変える
-    // progress 0(閉) -> 下, 1(開) -> 上
-    let targetY = map(progress, 0, 1, height - 100, 0);
-    let targetX = isRightHand ? 0 : width; // 打ち返す先
-    
-    let dx = targetX - this.x; let dy = targetY - this.y;
-    let d = sqrt(dx*dx + dy*dy);
-    let speed = 15;
-    this.vx = (dx/d) * speed; this.vy = (dy/d) * speed;
-  }
-}
-</script>
-</body>
-</html>
