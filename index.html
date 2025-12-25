@@ -3,16 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Correct Movement</title>
+  <title>Thumb Baseball - Perfect Sync</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
-    canvas { 
-      display: block; position: absolute; top: 0; left: 0; 
-      width: 100% !important; height: 100% !important; 
-      z-index: 0; 
-    }
+    canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
+    /* 操作盤 */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -27,7 +24,7 @@
       background: rgba(255, 255, 255, 0.15);
       border: 1px solid #777;
       border-radius: 8px; padding: 15px;
-      font-size: 13px; line-height: 1.5; color: white;
+      font-size: 13px; line-height: 1.6; color: white;
       text-align: left; width: 100%;
     }
 
@@ -38,8 +35,7 @@
     .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; }
 
     .hand-btn {
-      position: relative;
-      padding: 25px 0; font-size: 22px; font-weight: bold;
+      padding: 20px 0; font-size: 22px; font-weight: bold;
       color: #000; background: #ffff00; border: 4px solid #fff; border-radius: 15px; 
       cursor: pointer; width: 100%; 
       box-shadow: 0 5px 15px rgba(255, 255, 0, 0.4);
@@ -75,13 +71,14 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【手順】</strong><br>
+        <strong>【重要：可動域の設定】</strong><br>
         1. 手を選んでボタンをタップ<br>
         2. カメラ許可を「許可」<br>
-        3. 画面の指示に従い測定<br>
-        4. <strong>親指を開いて</strong>スイング！<br>
+        3. <strong>測定①</strong>：親指をピッタリ閉じてタップ<br>
+        4. <strong>測定②</strong>：親指を限界まで開いてタップ<br>
         <br>
-        ※反応しない場合は再読み込みしてください
+        ※この差が小さいと上手く動きません。<br>
+        しっかり開閉してください！
       </div>
     </div>
 
@@ -228,6 +225,7 @@ function onResults(results) {
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    
     let v1 = p5.Vector.sub(indexBase, wrist);
     let v2 = p5.Vector.sub(thumbTip, wrist);
     let rawAngle = v1.angleBetween(v2);
@@ -420,28 +418,25 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // ★重要：動きの正転化（閉=0, 開=1）
-  let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
-  let progress = 0;
-
-  // デッドゾーン (0.15以下は0とみなす)
-  if (rawProgress < 0.15) {
-    progress = 0;
-  } else {
-    progress = map(rawProgress, 0.15, 0.85, 0, 1);
-    progress = constrain(progress, 0, 1);
-  }
+  // ★親指の可動域を0-1に正規化
+  let progress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
+  // 可動域の外に出た値を0-1に丸める
+  progress = constrain(progress, 0, 1);
   
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
-  let isBatActive = (progress >= 0.1); 
+  
+  // 30%以上開いたらスイング判定開始
+  let isBatActive = (progress >= 0.3); 
+  
+  let batBaseLen = 140;
+  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
 
   push();
   translate(batX, batY);
   
-  // バットの回転方向
   if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
   else rotate(map(progress, 0, 1, -PI/4, PI/4));
   
@@ -450,8 +445,7 @@ function playGame() {
   } else { 
     fill(100, 150); noStroke(); 
   }
-  
-  rect(-15, 0, 30, 140, 10); 
+  rect(-15, 0, 30, batLen, 10);
   
   if (!isBatActive) { 
     fill(255); textSize(20); textAlign(CENTER); noStroke(); 
@@ -467,8 +461,9 @@ function playGame() {
     
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
     let inZone = (distToGuide < 100); 
-    let hitThreshold = 300; 
+    let hitThreshold = 300; // 当たり判定広め
     
+    // ヒット判定：Active かつ ゾーン内 かつ 距離
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
       playHitSound(); b.hit(progress); 
     }
@@ -537,7 +532,12 @@ function drawGameUI(progress) {
 
   let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
   stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
-  noStroke(); fill(progress > 0.8 ? color(255,50,50) : color(255,255,0));
+  // バーの色分け：30%未満=待機(グレー), 30-50%=下段, 50-80%=中段, 80%+=上段
+  if (progress < 0.3) fill(100);
+  else if (progress < 0.5) fill(0, 255, 0); // 下段狙い
+  else if (progress < 0.8) fill(255, 255, 0); // 中段狙い
+  else fill(255, 50, 50); // 上段狙い
+  
   rect(barX, barY, map(progress, 0, 1, 0, barW), 10); 
 
   if (messageTimer > 0) {
@@ -550,32 +550,66 @@ function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
 class Ball {
   constructor(currentLevel) {
+    // 左右モードでボール出現位置
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
     this.startY = height * 0.6; 
-    this.x = this.startX; this.y = this.startY; 
+    
+    this.x = this.startX; 
+    this.y = this.startY; 
+
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
+
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 50; 
+
     let dirX = targetX - this.startX; let dirY = targetY - this.startY;
     let distLen = sqrt(dirX*dirX + dirY*dirY);
-    this.vx = (dirX / distLen) * speed; this.vy = (dirY / distLen) * speed;
+    
+    this.vx = (dirX / distLen) * speed; 
+    this.vy = (dirY / distLen) * speed;
     this.isHit = false; this.ballColor = color(255);
   }
   update() { this.x += this.vx; this.y += this.vy; if (this.isHit) this.vy += 0.2; }
   display() { fill(this.ballColor); stroke(0); strokeWeight(1); ellipse(this.x, this.y, 30); }
+  
   hit(progress) {
     this.isHit = true; this.ballColor = color(255, 255, 0);
+    
     let areaW = 3 * panels[0].w + 30; 
     let areaLeft, areaRight;
-    if (isRightHand) { areaLeft = panelStartX; areaRight = panelStartX + areaW; } 
-    else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
+
+    if (isRightHand) {
+      areaLeft = panelStartX; 
+      areaRight = panelStartX + areaW;
+    } else {
+      areaLeft = panelStartX;
+      areaRight = panelStartX + areaW;
+    }
+    
+    // 左右位置（タイミング）：早ければ引っ張り、遅ければ流し
+    // 右手： 0.3(遅) -> Right, 0.9(早) -> Left
+    // 左手： 0.3(遅) -> Left,  0.9(早) -> Right
     let targetX;
-    if (isRightHand) targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
-    else targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
-    let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
-    let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
+    if (isRightHand) {
+        targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    } else {
+        targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
+    }
+
+    let areaTop = panels[0].y; 
+    let areaBottom = panels[8].y + panels[8].h;
+    
+    // 上下位置（開き具合）：
+    // 0.3〜0.5 -> 下段
+    // 0.5〜0.8 -> 中段
+    // 0.8〜1.0 -> 上段
+    let targetY;
+    if (progress < 0.5) targetY = areaBottom;
+    else if (progress < 0.8) targetY = (areaTop + areaBottom) / 2;
+    else targetY = areaTop;
+
     let dx = targetX - this.x; let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
     let flySpeed = 30; 
