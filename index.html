@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - 3 Zone Aiming</title>
+  <title>Thumb Rehab - Precision Control</title>
   <style>
-    body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
+    body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: "Helvetica Neue", Arial, sans-serif; touch-action: manipulation; }
     
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
-    /* 操作盤 */
+    /* オーバーレイ（設定・フィードバック画面） */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -19,35 +19,37 @@
       pointer-events: auto;
     }
 
-    #left-panel { width: 45%; padding: 10px; display: flex; justify-content: center; }
+    #left-panel { width: 45%; padding: 20px; display: flex; flex-direction: column; justify-content: center; }
     #instruction {
-      background: rgba(255, 255, 255, 0.15);
+      background: rgba(0, 50, 0, 0.5);
       border: 2px solid #00ff00;
-      border-radius: 8px; padding: 15px;
-      font-size: 13px; line-height: 1.6; color: white;
-      text-align: left; width: 100%;
+      border-radius: 12px; padding: 20px;
+      font-size: 16px; line-height: 1.8; color: white;
+      text-align: left; width: 90%;
     }
 
-    #right-panel { width: 45%; padding: 10px; display: flex; flex-direction: column; align-items: center; }
+    #right-panel { width: 45%; padding: 20px; display: flex; flex-direction: column; align-items: center; }
     
-    h1 { margin: 0 0 15px 0; font-size: 24px; color: #ffff00; }
+    h1 { margin: 0 0 20px 0; font-size: 32px; color: #00ff00; text-shadow: 0 0 10px #00ff00; }
 
     .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; }
 
     .hand-btn {
-      padding: 20px 0; font-size: 22px; font-weight: bold;
-      color: #000; background: #ffff00; border: 4px solid #fff; border-radius: 15px; 
+      padding: 25px 0; font-size: 24px; font-weight: bold;
+      color: #fff; background: #008800; border: 3px solid #fff; border-radius: 15px; 
       cursor: pointer; width: 100%; 
-      box-shadow: 0 5px 15px rgba(255, 255, 0, 0.4);
+      box-shadow: 0 5px 15px rgba(0, 255, 0, 0.3);
+      transition: all 0.2s;
     }
-    .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
+    .hand-btn:active { background: #00bb00; transform: scale(0.98); }
     
-    #statusLog {
-      margin-top: 20px; color: #00ff00; font-weight: bold; 
-      font-size: 14px; background: #222; border: 1px solid #555;
-      padding: 10px; border-radius: 5px; width: 100%;
-      min-height: 40px; word-wrap: break-word; text-align: left;
+    /* 測定結果表示エリア */
+    #resultArea {
+      display: none; /* 最初は隠す */
+      background: #fff; color: #000; padding: 20px; border-radius: 10px;
+      margin-top: 20px; width: 90%;
     }
+    #romResult { font-size: 40px; font-weight: bold; color: #d00; }
 
     #rawVideo { display: none; }
 
@@ -68,25 +70,33 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【3段階ロックオン設定】</strong><br>
-        1. 手を選んでボタンを押す<br>
-        2. 親指を<strong>閉じて</strong>画面タップ<br>
-        3. 親指を<strong>開いて</strong>画面タップ<br>
+        <strong>【リハビリテーション設定】</strong><br>
         <br>
-        <strong>＜プレイ中の操作＞</strong><br>
-        ・少し開く ➜ <strong>下段</strong><br>
-        ・半分開く ➜ <strong>中段</strong><br>
-        ・大きく開く ➜ <strong>上段</strong>
+        正確な可動域測定を行います。<br>
+        <br>
+        1. <strong>測定①（0cm）</strong><br>
+           親指を人差し指につけ、リラックスした状態でタップ。<br>
+        <br>
+        2. <strong>測定②（MAX）</strong><br>
+           親指を可能な限り大きく開き、キープしてタップ。<br>
       </div>
     </div>
 
     <div id="right-panel">
-      <h1>Thumb Baseball</h1>
+      <h1>Thumb Rehab</h1>
+      
       <div id="btn-group" class="btn-container">
-        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
-        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
+        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手で測定開始</button>
+        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手で測定開始</button>
       </div>
-      <div id="statusLog">準備完了。ボタンを押してください。</div>
+
+      <div id="statusLog" style="margin-top:20px; font-size:18px; color:#aaa;">準備完了</div>
+
+      <div id="resultArea">
+        <div>あなたの可動域</div>
+        <div id="romResult">-- cm</div>
+        <button class="hand-btn" style="margin-top:10px; background:#d00;" onclick="startGame()">トレーニング開始</button>
+      </div>
     </div>
   </div>
 
@@ -104,22 +114,17 @@ let handDetected = false;
 let isGameStarted = false;
 let isRightHand = true; 
 
-// 角度保持用
+// 測定・制御用変数
+let gameState = 1; // 1:閉測定, 2:開測定, 3:結果表示, 4:ゲーム中
 let angleClosed = 0, angleOpen = 0;
 let smoothedAngle = 0; 
-
-// ゲームロジック用
-let gameState = 1; 
-let currentCm = 0; 
-let fixedWristPosition = null; 
-const ALLOWED_MOVEMENT_RADIUS = 120;
+let maxRangeCM = 0; // 最大可動域(cm)
+let currentDisplayCM = 0; // 現在の表示(cm)
 
 let balls = [];
 let panels = []; 
 let score = 0;
-let level = 1; 
-let maxLives = 3;
-let lives = maxLives;
+let lives = 5; // リハビリようなのでライフ多め
 let combo = 0;
 
 let message = "", messageTimer = 0, messageColor;
@@ -142,12 +147,11 @@ function setup() {
   loadImage('stadium_bg.png', (img) => { bgImage = img; });
   updateLayout();
   initPanels();
-  log("準備OK。手を選んでください。");
 }
 
 function handleClick(hand) {
   document.getElementById('btn-group').style.display = 'none';
-  log("起動中...カメラを許可してください");
+  log("カメラ起動中...");
   setTimeout(() => { startSequence(hand); }, 100);
 }
 
@@ -169,7 +173,7 @@ function startCamera() {
   };
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    alert("このブラウザはカメラ非対応です"); return;
+    alert("カメラ非対応です"); return;
   }
 
   navigator.mediaDevices.getUserMedia(constraints)
@@ -177,19 +181,18 @@ function startCamera() {
       rawVideo.srcObject = stream;
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
-        log("AIエンジン読み込み中...");
+        log("手をカメラに合わせてください");
         initMediaPipe(); 
       };
     })
     .catch(err => {
       alert("カメラエラー: " + err.message);
-      document.getElementById('btn-group').style.display = 'flex';
     });
 }
 
 function initMediaPipe() {
   if (typeof Hands === 'undefined') {
-    log("AIライブラリ未ロード。リロードしてください。"); return;
+    log("AI読込エラー。リロードしてください。"); return;
   }
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
@@ -210,13 +213,7 @@ function initMediaPipe() {
     width: 640, height: 480
   });
   
-  camera.start().then(() => {
-    log("完了！ゲーム画面へ...");
-    setTimeout(() => {
-      document.getElementById('overlay').style.display = 'none';
-      isGameStarted = true;
-    }, 500);
-  });
+  camera.start();
 }
 
 function onResults(results) {
@@ -227,11 +224,11 @@ function onResults(results) {
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
     
+    // 角度計算
     let v1 = p5.Vector.sub(indexBase, wrist);
     let v2 = p5.Vector.sub(thumbTip, wrist);
     let rawAngle = v1.angleBetween(v2);
     
-    // スムージングでブレ軽減
     if (smoothedAngle === 0) smoothedAngle = rawAngle;
     smoothedAngle = lerp(smoothedAngle, rawAngle, 0.2); 
   } else {
@@ -240,409 +237,289 @@ function onResults(results) {
 }
 
 function draw() {
-  background(0);
-  if (bgImage) {
+  background(30); // 集中しやすいダークグレー背景
+  if (bgImage && gameState === 4) { // ゲーム中のみ背景画像
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
     let dw, dh, dx, dy;
     if (canvasAspect > imgAspect) { dw=width; dh=width/imgAspect; dx=0; dy=(height-dh)/2; }
     else { dh=height; dw=height*imgAspect; dy=0; dx=(width-dw)/2; }
+    tint(100); // 少し暗くしてボールを見やすく
     image(bgImage, dx, dy, dw, dh);
+    noTint();
   }
-
-  if (!isGameStarted) return;
 
   if (rawVideo && rawVideo.readyState >= 2) {
     push();
-    translate(width, 0); scale(-1, 1); tint(255, 120);
+    translate(width, 0); scale(-1, 1); 
+    // 測定中は映像をはっきり、ゲーム中は薄く
+    tint(255, gameState < 4 ? 200 : 80);
     drawingContext.drawImage(rawVideo, 0, 0, width, height);
     pop();
   }
 
-  // 骨組み
+  // 骨組み描画（常に表示してフォームを確認させる）
   if (handDetected && wrist && thumbTip) {
-    stroke(255, 0, 0); strokeWeight(2); 
+    stroke(0, 255, 0); strokeWeight(3); 
     line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+    line(wrist.x, wrist.y, indexBase.x, indexBase.y);
+    fill(255); noStroke();
+    ellipse(thumbTip.x, thumbTip.y, 15, 15);
   }
 
-  handleInput();
-  drawPanels();
-  drawAlwaysGuide();
-
-  if (gameState === 3) {
-    checkHandStability();
+  // 状態ごとの処理
+  if (gameState === 4) {
     playGame();
-  } else if (gameState === 4) {
-    drawErrorScreen();
-  } else if (gameState === 5) {
-    drawGameOverScreen();
-  } else {
-    drawSetupUI();
+  } else if (gameState < 3) {
+    drawMeasurementGuide();
   }
+}
+
+function drawMeasurementGuide() {
+  // ガイド円
+  let cx = isRightHand ? width * 0.8 : width * 0.2;
+  let cy = height / 2;
+  
+  noFill(); stroke(0, 255, 0); strokeWeight(4);
+  ellipse(cx, cy, 150, 150);
+  
+  textAlign(CENTER); textSize(24); fill(255); noStroke();
+  let statusText = "";
+  if (!handDetected) {
+    statusText = "カメラに手を映してください";
+  } else {
+    if (gameState === 1) statusText = "【測定1】親指を閉じて\n画面をタップ";
+    else if (gameState === 2) statusText = "【測定2】親指を最大まで開いて\n画面をタップ";
+  }
+  text(statusText, cx, cy - 120);
 }
 
 function handleInput() {
-  if (gameState === 5 || gameState === 4) return;
-  
-  if (handDetected) {
-    if (gameState === 1) { 
-        angleClosed = smoothedAngle; 
-        gameState = 2; 
-    } else if (gameState === 2) { 
-        angleOpen = smoothedAngle;
-        
-        let diff = abs(angleOpen - angleClosed);
-        // 差が小さすぎる場合は警告を出してリトライさせる
-        if (diff < 0.05) {
-            showMessage("動きが小さすぎます！\nやり直してください", color(255, 50, 50));
-            gameState = 1;
-        } else {
-            fixedWristPosition = createVector(wrist.x, wrist.y);
-            gameState = 3; 
-            showMessage("GAME START!", color(255, 255, 0));
-        }
-    }
+  if (!handDetected) return;
+
+  if (gameState === 1) { 
+      angleClosed = smoothedAngle; 
+      gameState = 2; 
+      log("閉じた位置を記録しました");
+  } else if (gameState === 2) { 
+      angleOpen = smoothedAngle;
+      
+      // 可動域計算 (単純な角度差ではなく、推定CMに換算)
+      let diff = abs(angleOpen - angleClosed);
+      
+      // 警告: 差が小さすぎる
+      if (diff < 0.05) {
+          alert("動きが小さすぎます。手首を固定して親指だけ動かしてください。");
+          gameState = 1; // やり直し
+          return;
+      }
+      
+      // 推定CM換算 (角度ラジアン * 指の長さ推定)
+      // 指の長さを画面比率からざっくり10cm相当と仮定して計算
+      // 実際は相対値だが、ユーザーへのフィードバックとしてCMを使う
+      let estimatedFingerLen = 10.0; 
+      maxRangeCM = diff * estimatedFingerLen; 
+      
+      showResult();
   }
+}
+
+function showResult() {
+  gameState = 3;
+  document.getElementById('instruction').style.display = 'none';
+  document.getElementById('resultArea').style.display = 'block';
+  document.getElementById('romResult').innerText = maxRangeCM.toFixed(1) + " cm";
+  log("測定完了。この可動域でゲーム設定を行います。");
+}
+
+function startGame() {
+  document.getElementById('overlay').style.display = 'none';
+  gameState = 4;
 }
 
 function touchStarted() { 
-  if (!isGameStarted) return true; 
-  if (gameState === 5 || gameState === 4) resetGame();
-  handleInput();
+  if (gameState < 3) handleInput();
   return false; 
 }
 function mousePressed() { 
-  if (!isGameStarted) return true;
-  if (gameState === 5 || gameState === 4) resetGame();
-  handleInput();
-}
-
-function resetGame() {
-  gameState = 1; balls = []; score = 0; level = 1; lives = maxLives; combo = 0;
-  fixedWristPosition = null; initPanels();
-  angleClosed = 0; angleOpen = 0; smoothedAngle = 0;
-}
-
-function windowResized() {
-  resizeCanvas(windowWidth, windowHeight);
-  updateLayout();
-  initPanels();
-}
-
-function updateLayout() {
-  if (isRightHand) {
-    batRangeStart = width * 0.85; batRangeEnd = width * 0.55; guidePositionX = width * 0.85;
-  } else {
-    batRangeStart = width * 0.15; batRangeEnd = width * 0.45; guidePositionX = width * 0.15;
-  }
-  guidePositionY = height / 2 + 100;
-}
-
-function initPanels() {
-  panels = [];
-  let cols = 3; let rows = 3;
-  // パネル初期化
-  let shrinkRate = constrain(1.0 - (level - 1) * 0.1, 0.5, 1.0);
-  let basePanelW = width * 0.06; let basePanelH = height * 0.10;
-  let panelW = basePanelW * shrinkRate; let panelH = basePanelH * shrinkRate;
-  let panelGap = 15 + (1 - shrinkRate) * 20;
-  let levelLift = (level - 1) * (height * 0.05);
-  
-  if (isRightHand) { panelStartX = width * 0.02; } 
-  else { 
-    let totalPanelW = cols * panelW + (cols - 1) * panelGap;
-    panelStartX = width - totalPanelW - width * 0.02; 
-  }
-
-  let totalH = rows * panelH + (rows - 1) * panelGap;
-  let panelStartY = (height - totalH - height * 0.05) - levelLift; 
-  if (panelStartY < height * 0.1) panelStartY = height * 0.1;
-
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      let num = r * 3 + c + 1;
-      panels.push({
-        col: c, row: r, 
-        x: panelStartX + c * (panelW + panelGap),
-        y: panelStartY + r * (panelH + panelGap),
-        w: panelW, h: panelH, num: num, active: true
-      });
-    }
-  }
-}
-
-function drawPanels() {
-  if (panels.every(p => !p.active)) {
-    showMessage("PERFECT! Next Level!", color(0, 255, 255));
-    if (frameCount % 60 === 0) initPanels(); 
-  }
-  for (let p of panels) {
-    if (p.active) {
-      // パネルの色分け（上・中・下段）
-      if (p.row === 0) fill(255, 100, 100, 150); // 赤（上段）
-      else if (p.row === 1) fill(255, 255, 100, 150); // 黄（中段）
-      else fill(100, 255, 100, 150); // 緑（下段）
-      
-      stroke(255); strokeWeight(3);
-      rect(p.x, p.y, p.w, p.h, 5);
-      let txtSize = min(p.w, p.h) * 0.6;
-      fill(255); noStroke(); textSize(txtSize); textStyle(BOLD); textAlign(CENTER, CENTER);
-      text(p.num, p.x + p.w/2, p.y + p.h/2);
-    } else {
-      fill(50, 50); stroke(100); strokeWeight(1);
-      rect(p.x, p.y, p.w, p.h, 5);
-    }
-  }
-}
-
-function drawAlwaysGuide() {
-  noFill(); 
-  let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
-  let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
-  if (handDetected) {
-    stroke(0, 255, 0); if (gameState < 3) fill(0, 255, 0, 50);
-  } else {
-    stroke(255, 0, 0); noFill();
-  }
-  strokeWeight(4); ellipse(centerX, centerY, 120, 120); 
-  strokeWeight(2); rect(centerX, centerY - 150, 350, 450, 20);
-}
-
-function checkHandStability() {
-  if (!wrist || !fixedWristPosition) return;
-  // 警告のみで止めない（ゲーム性重視）
-  if (dist(wrist.x, wrist.y, fixedWristPosition.x, fixedWristPosition.y) > 200) {
-    // gameState = 4; 
-  }
-}
-
-function drawSetupUI() {
-  textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
-  let uiX = guidePositionX; let uiY = guidePositionY - 280;
-  let textOffset = isRightHand ? -150 : 150;
-
-  if (!handDetected) { text("カメラに手を映してください", width/2, height/2); return; }
-  
-  if (gameState === 1) {
-      text(`【設定1/2】親指を閉じてタップ`, uiX + textOffset, uiY);
-  } else if (gameState === 2) {
-      text(`【設定2/2】親指を開いてタップ`, uiX + textOffset, uiY);
-  }
-}
-
-function drawErrorScreen() {
-  fill(0, 150); rect(0, 0, width, height);
-  textAlign(CENTER, CENTER); textSize(40); fill(255, 50, 50); stroke(255); strokeWeight(5);
-  text("手が動きました！", width/2, height/2 - 50);
-  textSize(24); fill(255); noStroke();
-  text("手首を丸の位置に戻してください。\n画面タップでリセット", width/2, height/2 + 50);
-}
-
-function drawGameOverScreen() {
-  fill(0, 200); rect(0, 0, width, height);
-  textAlign(CENTER, CENTER); 
-  fill(255, 50, 50); stroke(255); strokeWeight(5); textSize(60);
-  text("GAME OVER", width/2, height/2 - 50);
-  fill(255); noStroke(); textSize(30);
-  text(`Total Score: ${score}`, width/2, height/2 + 30);
-  textSize(24); text("画面タップでリトライ", width/2, height/2 + 100);
+  if (gameState < 3) handleInput();
 }
 
 function playGame() {
-  // ★重要：可動域を自動で正規化（閉=0, 開=1）
-  // ユーザーがどっちから先に測っても正しくなるよう map を使用
-  let progress = map(smoothedAngle, angleClosed, angleOpen, 0, 1.2); // 1.2倍感度
-  progress = constrain(progress, 0, 1);
+  // ★リハビリ用制御ロジック
+  // 現在の角度を、測定した min/max に基づいて 0.0〜1.0 に正規化
+  // 補正は一切かけない。ユーザーの生入力を使う。
+  let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
   
-  // ★ゾーン判定（これが重要）
-  // 0.0 - 0.2 : 待機
-  // 0.2 - 0.5 : 下段 (Low)
-  // 0.5 - 0.8 : 中段 (Mid)
-  // 0.8 - 1.0 : 上段 (High)
-  let zone = "WAIT";
-  let targetRow = -1; // -1:なし, 0:上, 1:中, 2:下
+  // 範囲外も許容するが、バットの位置計算ではクリップする
+  let displayProgress = constrain(rawProgress, 0, 1);
   
-  if (progress < 0.2) {
-    zone = "WAIT";
-  } else if (progress < 0.5) {
-    zone = "LOW (下段)";
-    targetRow = 2;
-  } else if (progress < 0.8) {
-    zone = "MID (中段)";
-    targetRow = 1;
-  } else {
-    zone = "HIGH (上段)";
-    targetRow = 0;
-  }
-  
-  currentCm = progress * 10.0; 
+  // 現在のCM換算
+  currentDisplayCM = rawProgress * maxRangeCM;
+  if(currentDisplayCM < 0) currentDisplayCM = 0;
 
-  let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
-  let batY = map(progress, 0, 1, height - 100, height - 250);
-  let isBatActive = (zone !== "WAIT"); 
+  // バット位置 (リニア)
+  let batX = map(displayProgress, 0, 1, batRangeStart, batRangeEnd);
+  let batY = map(displayProgress, 0, 1, height - 100, height - 250);
   
-  let batBaseLen = 140;
-  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
-
+  // バット描画
   push();
   translate(batX, batY);
-  if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
-  else rotate(map(progress, 0, 1, -PI/4, PI/4));
+  if (isRightHand) rotate(map(displayProgress, 0, 1, PI/4, -PI/4));
+  else rotate(map(displayProgress, 0, 1, -PI/4, PI/4));
   
-  if (isBatActive) { 
-    // ゾーンに応じてバットの色を変える
-    if (targetRow === 0) fill(255, 100, 100); // 上段＝赤
-    else if (targetRow === 1) fill(255, 255, 100); // 中段＝黄
-    else fill(100, 255, 100); // 下段＝緑
-    stroke(0); 
-  } else { 
-    fill(100, 150); noStroke(); 
-  }
-  rect(-15, 0, 30, batLen, 10);
-  
-  // ゾーン表示
-  fill(255); textSize(24); textAlign(CENTER); noStroke(); 
-  rotate(isRightHand ? -PI/4 : PI/4); 
-  text(zone, 0, -40); 
-  
+  // 色で力を表現 (開くほど赤く)
+  fill(lerpColor(color(0, 255, 0), color(255, 0, 0), displayProgress));
+  stroke(0); strokeWeight(2);
+  rect(-10, -100, 20, 100, 5); 
   pop();
 
-  if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball(level));
+  // ボール処理
+  if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball());
 
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i]; b.update(); b.display();
     
-    // ヒット判定エリア拡大
+    // 当たり判定 (厳密に)
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    let inZone = (distToGuide < 200); 
-    let hitThreshold = 400; 
+    let inZone = (distToGuide < 150); 
     
-    if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
-      playHitSound(); 
-      // ターゲット行を渡す
-      b.hit(targetRow); 
+    // バット先端との距離
+    // バットの角度計算
+    let rot = isRightHand ? map(displayProgress, 0, 1, PI/4, -PI/4) : map(displayProgress, 0, 1, -PI/4, PI/4);
+    let tipX = batX + sin(rot) * 80;
+    let tipY = batY - cos(rot) * 80; // 上方向
+    
+    let hitDist = dist(b.x, b.y, tipX, tipY);
+
+    if (!b.isHit && inZone && hitDist < 60) { // 60px以内でヒット
+      playHitSound();
+      b.hit(displayProgress); 
     }
 
     if (b.isHit) {
+      // パネル判定
       for (let p of panels) {
         if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
-          p.active = false; score++; combo++;
-          // コンボメッセージ
-          if (combo > 40) showMessage("神域！", color(255,0,0));
-          else if (combo > 20) showMessage("凄すぎ！", color(255,100,0));
-          else if (combo > 10) showMessage("NICE!", color(255,255,0));
-          else showMessage("HIT!", color(255));
-          
-          checkLevelUp(); balls.splice(i, 1); break;
+          p.active = false; score++; 
+          if(panels.every(p=>!p.active)) initPanels();
+          balls.splice(i, 1); break;
         }
       }
-    }
-
-    if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) {
-      if (!b.isHit) {
-        lives--; combo = 0; showMessage("MISS!", color(100, 100, 255));
-        if (lives <= 0) gameState = 5;
-      }
-      balls.splice(i, 1);
+    } else if (b.y > height || b.x < 0 || b.x > width) {
+       balls.splice(i, 1);
     }
   }
-  drawGameUI(progress);
+  
+  drawRehabUI(displayProgress);
+  drawPanels();
 }
 
-function checkLevelUp() {
-  if (score > 0 && score % 10 === 0) { level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0)); }
+function drawRehabUI(progress) {
+  // 画面左側に詳細なゲージを表示
+  let barW = 30;
+  let barH = 300;
+  let barX = 20;
+  let barY = height / 2 - barH / 2;
+  
+  // 背景
+  fill(50); stroke(255);
+  rect(barX, barY, barW, barH);
+  
+  // 現在値
+  let fillH = progress * barH;
+  fill(0, 255, 0); noStroke();
+  rect(barX, barY + barH - fillH, barW, fillH);
+  
+  // 目盛り線 (0cm, Max cm)
+  stroke(255);
+  line(barX, barY + barH, barX + 40, barY + barH); // 0
+  line(barX, barY, barX + 40, barY); // Max
+  
+  fill(255); textSize(16); textAlign(LEFT, CENTER); noStroke();
+  text("0cm", barX + 45, barY + barH);
+  text(maxRangeCM.toFixed(1) + "cm", barX + 45, barY);
+  
+  // 現在の数値
+  textSize(32); textStyle(BOLD); fill(255, 255, 0);
+  text(currentDisplayCM.toFixed(1) + " cm", barX + 45, barY + barH - fillH);
+  
+  textAlign(RIGHT, TOP);
+  text(`Score: ${score}`, width - 20, 20);
 }
 
 function playHitSound() {
   if (audioCtx && audioCtx.state === 'running') {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-    osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.1);
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+    gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+    osc.start(); osc.stop(audioCtx.currentTime + 0.1);
   }
 }
 
-function drawGameUI(progress) {
-  fill(255); stroke(0); strokeWeight(4);
-  textAlign(RIGHT, TOP); textSize(32); 
-  text(`打点: ${score}`, width - 20, 20); text(`Lv.${level}`, width - 20, 60);
-
-  if (combo > 1) { fill(255, 200, 0); textSize(40); text(`${combo} COMBO!`, width - 20, 110); }
-
-  textAlign(LEFT, TOP); fill(255, 50, 50); textSize(32);
-  let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
-  text(`Life: ${hearts}${empty}`, 20, 20);
-
-  let uiW = 220; let uiX = width / 2 - uiW / 2; let uiY = 10; 
-  fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
-  fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
-  text("現在の可動域", uiX + uiW/2, uiY + 5);
-  textSize(30); textStyle(BOLD); text((progress*100).toFixed(0) + " %", uiX + uiW/2, uiY + 30);
-
-  // バーの色分け（ゾーン）
-  let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
-  stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
+function initPanels() {
+  panels = [];
+  let panelW = width * 0.08; let panelH = height * 0.12;
+  // 右手なら左側に的、左手なら右側に的
+  let startX = isRightHand ? width * 0.1 : width * 0.7; 
+  let startY = height * 0.2;
   
-  if (progress < 0.2) fill(100);
-  else if (progress < 0.5) fill(100, 255, 100); // 緑（下段）
-  else if (progress < 0.8) fill(255, 255, 100); // 黄（中段）
-  else fill(255, 100, 100); // 赤（上段）
-  
-  rect(barX, barY, map(progress, 0, 1, 0, barW), 10); 
-
-  if (messageTimer > 0) {
-    textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
-    textSize(60); text(message, width/2, height/3); messageTimer--;
+  for(let i=0; i<3; i++) { // 縦3つ
+      panels.push({
+          x: startX, y: startY + i * (panelH + 20),
+          w: panelW, h: panelH, row: i, active: true
+      });
   }
 }
 
-function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
+function updateLayout() {
+  if (isRightHand) {
+    batRangeStart = width * 0.8; batRangeEnd = width * 0.6; guidePositionX = width * 0.8;
+  } else {
+    batRangeStart = width * 0.2; batRangeEnd = width * 0.4; guidePositionX = width * 0.2;
+  }
+  guidePositionY = height * 0.7;
+}
 
 class Ball {
-  constructor(currentLevel) {
-    this.startX = isRightHand ? width * 0.1 : width * 0.9;
-    this.startY = height * 0.6; 
-    this.x = this.startX; this.y = this.startY; 
-    let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
-    let speed = random(baseSpeed, baseSpeed + 2); 
-    let homeBaseCenterX = guidePositionX;
-    let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
-    let targetY = guidePositionY - 50; 
-    let dirX = targetX - this.startX; let dirY = targetY - this.startY;
-    let distLen = sqrt(dirX*dirX + dirY*dirY);
-    this.vx = (dirX / distLen) * speed; this.vy = (dirY / distLen) * speed;
-    this.isHit = false; this.ballColor = color(255);
-  }
-  update() { this.x += this.vx; this.y += this.vy; if (this.isHit) this.vy += 0.2; }
-  display() { fill(this.ballColor); stroke(0); strokeWeight(1); ellipse(this.x, this.y, 30); }
-  
-  // ヒット時にターゲット行を指定
-  hit(targetRow) {
-    this.isHit = true; this.ballColor = color(255, 255, 0);
+  constructor() {
+    // 逆サイドから投げる
+    this.startX = isRightHand ? 0 : width;
+    this.startY = height * 0.4;
+    this.x = this.startX; this.y = this.startY;
     
-    // パネルエリア全体幅
-    let areaW = 3 * panels[0].w + 30; 
-    // 横位置はランダム（左右の打ち分けより高さを優先）
-    let areaLeft = isRightHand ? panelStartX : panelStartX;
-    let targetX = random(areaLeft, areaLeft + areaW);
-
-    // 縦位置：指定された行（0,1,2）の中心を狙う
-    let targetY;
-    if (targetRow === 0) targetY = panels[0].y + panels[0].h/2; // 上段
-    else if (targetRow === 1) targetY = panels[3].y + panels[3].h/2; // 中段
-    else targetY = panels[6].y + panels[6].h/2; // 下段
-
+    // ガイド（バットの位置）に向かって投げる
+    let targetX = guidePositionX;
+    let targetY = guidePositionY;
+    
+    let dx = targetX - this.startX;
+    let dy = targetY - this.startY;
+    let dist = sqrt(dx*dx + dy*dy);
+    
+    let speed = 5;
+    this.vx = (dx/dist) * speed;
+    this.vy = (dy/dist) * speed;
+    
+    this.isHit = false;
+    this.ballColor = color(255);
+  }
+  update() { this.x += this.vx; this.y += this.vy; }
+  display() { fill(this.ballColor); ellipse(this.x, this.y, 20); }
+  hit(progress) {
+    this.isHit = true; this.ballColor = color(255, 255, 0);
+    // 打ち返す方向：開き具合によって高さを変える
+    // progress 0(閉) -> 下, 1(開) -> 上
+    let targetY = map(progress, 0, 1, height - 100, 0);
+    let targetX = isRightHand ? 0 : width; // 打ち返す先
+    
     let dx = targetX - this.x; let dy = targetY - this.y;
-    let distLen = sqrt(dx*dx + dy*dy);
-    let flySpeed = 30; 
-    this.vx = (dx / distLen) * flySpeed; this.vy = (dy / distLen) * flySpeed;
+    let d = sqrt(dx*dx + dy*dy);
+    let speed = 15;
+    this.vx = (dx/d) * speed; this.vy = (dy/d) * speed;
   }
 }
 </script>
