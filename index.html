@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Final Fixed</title>
+  <title>Thumb Baseball - Auto Adjusted</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -50,14 +50,6 @@
       min-height: 40px; word-wrap: break-word; text-align: left;
     }
 
-    #invertBtn {
-      display: none; position: absolute; top: 10px; left: 10px;
-      padding: 8px 16px; font-size: 14px; font-weight: bold;
-      background: #444; color: white; border: 2px solid white; border-radius: 50px;
-      z-index: 2000; cursor: pointer;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
-    }
-
     #rawVideo { display: none; }
   </style>
   
@@ -69,18 +61,16 @@
 
   <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
   
-  <button id="invertBtn" onclick="toggleDirection()">🔄 スイング方向を切替</button>
-
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
         <strong>【設定手順】</strong><br>
         1. プレイする手を選んでください。<br>
-        2. <strong>親指を閉じて</strong>タップ（WAIT位置）。<br>
-        3. <strong>親指を開いて</strong>タップ（SWING位置）。<br>
+        2. <strong>親指を閉じて</strong>タップ（構え）。<br>
+        3. <strong>親指を開いて</strong>タップ（スイング）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small><strong>閉じる</strong>：外側で構える<br><strong>開く</strong>：内側へ振る</small>
+        <small><strong>「閉じる＝外側」「開く＝内側」</strong><br>に自動調整されます。</small>
       </div>
     </div>
 
@@ -125,10 +115,7 @@ let message = "", messageTimer = 0, messageColor;
 let bgImage = null;
 let audioCtx = null;
 
-// フラグ: false = 「閉じて外、開いて内」 (ご希望の動作)
-let isReverseSwing = false; 
-
-// バットの可動範囲定義用
+// バットの可動範囲（自動設定用）
 let batOuterX, batInnerX; 
 let guidePositionX, guidePositionY;
 let panelStartX;
@@ -203,13 +190,6 @@ function handleClick(hand) {
   setTimeout(() => { startSequence(hand); }, 100);
 }
 
-function toggleDirection() {
-  isReverseSwing = !isReverseSwing;
-  const btn = document.getElementById('invertBtn');
-  btn.style.background = isReverseSwing ? "#5555ff" : "#444";
-  btn.innerText = isReverseSwing ? "🔄 切替: 外→内" : "🔄 切替: 内→外";
-}
-
 async function startSequence(hand) {
   isRightHand = (hand === 'right');
   try {
@@ -263,7 +243,6 @@ function initMediaPipe() {
     log("完了！ゲーム画面へ...");
     setTimeout(() => {
       document.getElementById('overlay').style.display = 'none';
-      document.getElementById('invertBtn').style.display = 'block';
       isGameStarted = true;
     }, 500);
   });
@@ -328,15 +307,15 @@ function windowResized() {
 }
 
 function updateLayout() {
-  // ■ 修正: 親指閉(Wait) = 画面端(Outer), 親指開(Swing) = 画面中央(Inner)
-  
+  // ■ 自動調整ロジック：
+  // 閉じたとき(Wait)は画面端、開いたとき(Swing)は画面中央。
   if (isRightHand) {
-    batOuterX = width * 0.85; // 右端 (閉じたときの位置)
-    batInnerX = width * 0.50; // 中央 (開いたときの位置)
+    batOuterX = width * 0.85; // 右端 (閉 = 構え)
+    batInnerX = width * 0.50; // 中央 (開 = 打撃)
     guidePositionX = width * 0.85;
   } else {
-    batOuterX = width * 0.15; // 左端 (閉じたときの位置)
-    batInnerX = width * 0.50; // 中央 (開いたときの位置)
+    batOuterX = width * 0.15; // 左端 (閉 = 構え)
+    batInnerX = width * 0.50; // 中央 (開 = 打撃)
     guidePositionX = width * 0.15;
   }
   guidePositionY = height * 0.75;
@@ -440,28 +419,19 @@ function drawGameOverScreen() {
 
 function playGame() {
   let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
-  if (rawProgress < 0.1) rawProgress = 0; // デッドゾーン
+  if (rawProgress < 0.1) rawProgress = 0; 
   let progress = constrain(rawProgress, 0, 1);
 
-  // ■ 動作ロジック
-  // progress 0 (閉) => 外側 (batOuterX)
-  // progress 1 (開) => 内側 (batInnerX)
+  // ■ 完全固定ロジック:
+  // 親指閉(0) = 外側 (batOuterX)
+  // 親指開(1) = 内側 (batInnerX)
+  // 左右の手の判定は updateLayout で Outer/Inner の座標を定義済み
+  let batX = map(progress, 0, 1, batOuterX, batInnerX);
   
-  let startX, endX;
-  if (!isReverseSwing) {
-    startX = batOuterX; 
-    endX = batInnerX;   
-  } else {
-    startX = batInnerX;
-    endX = batOuterX;
-  }
-
-  let batX = map(progress, 0, 1, startX, endX);
-  
-  // バットの角度も進行度に合わせて回転
+  // バットの角度も進行度に合わせて回転 (外→内)
   let rotateAngle;
-  if (isRightHand) rotateAngle = map(progress, 0, 1, PI/4, -PI/4); // 右手: 外(右)から内へ
-  else rotateAngle = map(progress, 0, 1, -PI/4, PI/4); // 左手: 外(左)から内へ
+  if (isRightHand) rotateAngle = map(progress, 0, 1, PI/4, -PI/4); 
+  else rotateAngle = map(progress, 0, 1, -PI/4, PI/4);
   
   let isBatActive = (progress >= 0.1); 
   let batY = guidePositionY - 80;
@@ -590,12 +560,9 @@ class Ball {
     else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
     let targetX;
     
-    // ヒット時の飛球方向もスイングに合わせて調整
-    let normalizedProgress = progress;
-    if(isReverseSwing) normalizedProgress = 1.0 - progress;
-
-    if (isRightHand) targetX = map(normalizedProgress, 0.3, 0.9, areaRight, areaLeft);
-    else targetX = map(normalizedProgress, 0.3, 0.9, areaLeft, areaRight);
+    // ヒット時の飛球方向
+    if (isRightHand) targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    else targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
     
     let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
     let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
@@ -608,4 +575,3 @@ class Ball {
 </script>
 </body>
 </html>
-
