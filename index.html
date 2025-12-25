@@ -3,20 +3,23 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - High Precision</title>
+  <title>Thumb Baseball - Stop & Go</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; touch-action: manipulation; }
     
-    /* キャンバス */
-    canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
+    canvas { 
+      display: block; position: absolute; top: 0; left: 0; 
+      width: 100% !important; height: 100% !important; 
+      z-index: 0; 
+    }
     
-    /* 操作盤 */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
       display: flex; flex-direction: row; 
       justify-content: center; align-items: center;
-      z-index: 9999; color: white; text-align: center;
+      z-index: 1000; color: white; text-align: center;
+      pointer-events: auto;
     }
 
     #left-panel { width: 45%; padding: 10px; display: flex; justify-content: center; }
@@ -25,12 +28,12 @@
       border: 1px solid #777;
       border-radius: 8px; padding: 15px;
       font-size: 13px; line-height: 1.5; color: white;
-      text-align: left; width: 100%; pointer-events: none;
+      text-align: left; width: 100%;
     }
 
     #right-panel { width: 45%; padding: 10px; display: flex; flex-direction: column; align-items: center; }
     
-    h1 { margin: 0 0 15px 0; font-size: 24px; color: #ffff00; pointer-events: none; }
+    h1 { margin: 0 0 15px 0; font-size: 24px; color: #ffff00; }
 
     .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; }
 
@@ -42,16 +45,15 @@
       box-shadow: 0 5px 15px rgba(255, 255, 0, 0.4);
       user-select: none; -webkit-user-select: none;
       touch-action: manipulation;
-      pointer-events: auto !important;
+      z-index: 2000; 
     }
     .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
-
-    /* ステータスログ */
+    
     #statusLog {
       margin-top: 20px; color: #00ff00; font-weight: bold; 
       font-size: 14px; background: rgba(0,0,0,0.8); border: 1px solid #00ff00;
       padding: 10px; border-radius: 5px; width: 100%;
-      min-height: 50px; word-wrap: break-word; text-align: left;
+      min-height: 40px; word-wrap: break-word; text-align: left;
     }
 
     #rawVideo { display: none; }
@@ -73,11 +75,11 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【高精度モード】</strong><br>
+        <strong>【手順】</strong><br>
         1. 手を選んでボタンをタップ<br>
         2. カメラ許可を「許可」<br>
         3. 画面の指示に従い測定<br>
-        4. <strong>手ブレ補正ON</strong>でプレイ！<br>
+        4. 親指を閉じると停止、開くとスイング！<br>
         <br>
         ※反応しない場合は再読み込みしてください
       </div>
@@ -86,10 +88,10 @@
     <div id="right-panel">
       <h1>Thumb Baseball</h1>
       <div id="btn-group" class="btn-container">
-        <button class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
-        <button class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
+        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ</button>
+        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ</button>
       </div>
-      <div id="statusLog">準備完了。<br>ボタンを押してください。</div>
+      <div id="statusLog">準備完了。ボタンを押してください。</div>
     </div>
   </div>
 
@@ -99,24 +101,18 @@ window.onerror = function(msg, url, line) {
   if(el) { el.innerHTML = "⚠️ エラー:<br>" + msg; el.style.color = "#ff5555"; }
 };
 
-// --- グローバル変数 ---
 let rawVideo = document.getElementById('rawVideo');
 let hands = null;
 let camera = null;
-let thumbTip = null, indexBase = null, wrist = null, thumbCMC = null;
+let thumbTip = null, indexBase = null, wrist = null;
 let handDetected = false;
 let isGameStarted = false;
 let isRightHand = true; 
 
-// ゲーム状態
 let gameState = 1; 
-
-// ★精度向上のための変数
-let angleClosed = 0, angleOpen = 0;
-let rawAngle = 0;      // 瞬間の値
-let smoothedAngle = 0; // 補正後の値
+let angleClosed = 0, angleOpen = 0, currentAngle = 0;
+let smoothedAngle = 0; 
 let currentCm = 0; 
-
 let fixedWristPosition = null; 
 const ALLOWED_MOVEMENT_RADIUS = 120;
 
@@ -141,17 +137,13 @@ function log(msg) {
   if(el) el.innerHTML = msg;
 }
 
-// --- 初期化 ---
 function setup() {
   pixelDensity(1);
   let cnv = createCanvas(windowWidth, windowHeight);
   cnv.style('z-index', '-1'); 
-  
   loadImage('stadium_bg.png', (img) => { bgImage = img; });
-  
   updateLayout();
   initPanels();
-  
   log("準備OK。ボタンを押してください。");
 }
 
@@ -163,12 +155,10 @@ function handleClick(hand) {
 
 async function startSequence(hand) {
   isRightHand = (hand === 'right');
-  
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if(AudioContext) { audioCtx = new AudioContext(); audioCtx.resume(); }
   } catch(e) {}
-
   updateLayout();
   initPanels();
   startCamera();
@@ -189,7 +179,7 @@ function startCamera() {
       rawVideo.srcObject = stream;
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
-        log("AIエンジン読み込み中(高精度)...");
+        log("AIエンジン読み込み中...");
         initMediaPipe(); 
       };
     })
@@ -205,15 +195,12 @@ function initMediaPipe() {
   }
 
   hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
-  
-  // ★修正1: 信頼度を上げて、誤検知を減らす
   hands.setOptions({
     maxNumHands: 1, 
-    modelComplexity: 1, // 精度重視 (スマホで重ければ0に戻す)
-    minDetectionConfidence: 0.7, // 0.5 -> 0.7 にアップ
-    minTrackingConfidence: 0.7   // 0.5 -> 0.7 にアップ
+    modelComplexity: 1, 
+    minDetectionConfidence: 0.7, 
+    minTrackingConfidence: 0.7
   });
-  
   hands.onResults(onResults);
 
   camera = new Camera(rawVideo, {
@@ -238,29 +225,23 @@ function onResults(results) {
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
-    
-    // 座標取得
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
-    // ★修正2: 親指の付け根(CMC)も取得して角度計算を安定化
-    thumbCMC = createVector((1 - lm[1].x) * width, lm[1].y * height);
     indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
-    
-    // 角度計算 (Wrist-Index と Wrist-ThumbTip のなす角)
-    // これが一番「開き具合」として安定している
     let v1 = p5.Vector.sub(indexBase, wrist);
     let v2 = p5.Vector.sub(thumbTip, wrist);
-    rawAngle = v1.angleBetween(v2);
-
+    let rawAngle = v1.angleBetween(v2);
+    
+    // スムージング処理
+    if (smoothedAngle === 0) smoothedAngle = rawAngle;
+    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.2); 
   } else {
     handDetected = false;
   }
 }
 
-// --- メインループ ---
 function draw() {
   background(0);
-  
   if (bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
@@ -277,14 +258,6 @@ function draw() {
     translate(width, 0); scale(-1, 1); tint(255, 120);
     drawingContext.drawImage(rawVideo, 0, 0, width, height);
     pop();
-  }
-
-  // ★修正3: スムージング処理 (線形補間)
-  // 生の角度(rawAngle)に、少しずつ近づけることで手ブレを除去する
-  // 0.2 は「追従速度」。小さいほど滑らかだが遅れる。0.2はバランスが良い。
-  if (handDetected) {
-    if (smoothedAngle === 0) smoothedAngle = rawAngle; // 初期化
-    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.2);
   }
 
   handleInput();
@@ -307,10 +280,10 @@ function handleInput() {
   if (gameState === 5 || gameState === 4) return;
   if (handDetected) {
     if (gameState === 1) { 
-        angleClosed = smoothedAngle; // 補正後の値を使用
+        angleClosed = smoothedAngle; 
         gameState = 2; 
     } else if (gameState === 2) { 
-        angleOpen = smoothedAngle;   // 補正後の値を使用
+        angleOpen = smoothedAngle;   
         fixedWristPosition = createVector(wrist.x, wrist.y);
         gameState = 3; 
     }
@@ -332,6 +305,7 @@ function mousePressed() {
 function resetGame() {
   gameState = 1; balls = []; score = 0; level = 1; lives = maxLives; combo = 0;
   fixedWristPosition = null; initPanels();
+  angleClosed = 0; angleOpen = 0; smoothedAngle = 0;
 }
 
 function windowResized() {
@@ -447,25 +421,47 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // ★補正後の smoothedAngle を使用
-  let progress = constrain(map(smoothedAngle, angleClosed, angleOpen, 0, 1), 0, 1);
+  // ★重要：メリハリをつける修正
+  let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
+  let progress = 0;
+
+  // 1. デッドゾーン（遊び）: 15%までは「動かない（0）」
+  if (rawProgress < 0.15) {
+    progress = 0;
+  } else {
+    // 2. それ以降は「動く」。85%開けば「フルスイング(1.0)」になるよう補正
+    // 0.15 〜 0.85 の間を 0 〜 1 にマッピング
+    progress = map(rawProgress, 0.15, 0.85, 0, 1);
+    progress = constrain(progress, 0, 1);
+  }
+  
   currentCm = progress * 10.0; 
 
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
   let batY = map(progress, 0, 1, height - 100, height - 250);
-  let isBatActive = (progress >= 0.25); 
-  let batBaseLen = 140;
-  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
+  let isBatActive = (progress >= 0.1); // 少しでも動けばActive
 
   push();
   translate(batX, batY);
+  
+  // バットの回転
   if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
   else rotate(map(progress, 0, 1, -PI/4, PI/4));
   
-  if (isBatActive) { fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0); }
-  else { fill(100, 150); noStroke(); }
-  rect(-15, 0, 30, batLen, 10);
-  if (!isBatActive) { fill(255); textSize(20); textAlign(CENTER); noStroke(); text("WAIT", 0, -20); }
+  if (isBatActive) { 
+    fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0); 
+  } else { 
+    fill(100, 150); noStroke(); 
+  }
+  
+  rect(-15, 0, 30, 140, 10); // バット
+  
+  // 閉じてる時は「WAIT」表示
+  if (!isBatActive) { 
+    fill(255); textSize(20); textAlign(CENTER); noStroke(); 
+    rotate(isRightHand ? -PI/4 : PI/4); // 文字を水平に戻す
+    text("WAIT", 0, -30); 
+  }
   pop();
 
   if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball(level));
@@ -473,10 +469,8 @@ function playGame() {
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i]; b.update(); b.display();
     
-    // ガイド内判定
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
     let inZone = (distToGuide < 100); 
-    // 感度マシマシ（判定を広げる）
     let hitThreshold = 300; 
     
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
