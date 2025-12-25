@@ -1,54 +1,14 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import time
 
-# ---------------------------------------------------------
-# 初期設定：ゲーム変数
-# ---------------------------------------------------------
-window_width = 640
-window_height = 480
-
-# パドル（ラケット）の設定
-paddle_width = 120
-paddle_height = 20
-paddle_color = (255, 100, 100) # 青みのある色
-paddle_x = (window_width - paddle_width) // 2
-paddle_y = window_height - 40
-
-# ボールの設定
-ball_radius = 10
-ball_color = (100, 255, 100) # 緑
-ball_x = window_width // 2
-ball_y = window_height // 2
-ball_dx = 4  # ボールの速度X
-ball_dy = -4 # ボールの速度Y
-
-# ブロックの設定
-block_rows = 5
-block_cols = 8
-block_width = window_width // block_cols
-block_height = 30
-blocks = []
-
-# ブロックの初期化（フラグ1が存在、0が破壊済み）
-for r in range(block_rows):
-    row_blocks = []
-    for c in range(block_cols):
-        row_blocks.append(1)
-    blocks.append(row_blocks)
-
-# ゲームの状態
-game_over = False
-score = 0
-
-# ---------------------------------------------------------
-# 関数定義：角度計算
-# ---------------------------------------------------------
+# --- 1. 関数定義: 角度計算 ---
 def calculate_angle(a, b, c):
-    """3点間の角度を計算する"""
-    a = np.array(a) # 起点
-    b = np.array(b) # 中点（関節）
-    c = np.array(c) # 終点
+    """3点間の角度を計算 (0〜180度)"""
+    a = np.array(a)
+    b = np.array(b)
+    c = np.array(c)
     
     radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
     angle = np.abs(radians*180.0/np.pi)
@@ -57,15 +17,35 @@ def calculate_angle(a, b, c):
         angle = 360 - angle
     return angle
 
-# ---------------------------------------------------------
-# メイン処理
-# ---------------------------------------------------------
+# --- 2. ゲーム設定 ---
+# 画面サイズ
+WIDTH, HEIGHT = 640, 480
+
+# パネル（的）の設定：3x3のグリッド
+rows, cols = 3, 3
+panels = [True] * 9  # Trueならパネルが存在、Falseなら破壊済み
+panel_margin = 10
+panel_width = (WIDTH - 150) // cols  # 右側に情報表示スペースを空ける
+panel_height = (HEIGHT - 100) // rows
+start_x = 20
+start_y = 50
+
+# カーソル位置（初期値）
+cursor_pos = 4  # 0~8のインデックス（中心は4）
+
+# ゲーム状態
+score = 0
+message = "Aim & Press SPACE"
+message_color = (255, 255, 255)
+last_throw_time = 0
+
+# --- 3. メイン処理 ---
 mp_drawing = mp.solutions.drawing_utils
 mp_hands = mp.solutions.hands
 
 cap = cv2.VideoCapture(0)
-cap.set(3, window_width)
-cap.set(4, window_height)
+cap.set(3, WIDTH)
+cap.set(4, HEIGHT)
 
 with mp_hands.Hands(
     min_detection_confidence=0.7,
@@ -78,7 +58,7 @@ with mp_hands.Hands(
         if not ret:
             break
         
-        # 左右反転 & カラー変換
+        # 鏡のように反転
         frame = cv2.flip(frame, 1)
         image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         image.flags.writeable = False
@@ -89,129 +69,121 @@ with mp_hands.Hands(
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         
         current_angle = 0
-        status_text = "Wait"
-
-        # --- ハンドトラッキングと角度計算 ---
+        
+        # ハンドトラッキング処理
         if results.multi_hand_landmarks:
             for hand_landmarks in results.multi_hand_landmarks:
                 h, w, _ = image.shape
                 
-                # 親指のランドマーク: 2(CM), 3(MP), 4(IP/Tip)
+                # 親指の座標取得 (CM, MP, IP/Tip)
                 p2 = [hand_landmarks.landmark[2].x * w, hand_landmarks.landmark[2].y * h]
                 p3 = [hand_landmarks.landmark[3].x * w, hand_landmarks.landmark[3].y * h]
                 p4 = [hand_landmarks.landmark[4].x * w, hand_landmarks.landmark[4].y * h]
                 
-                # 角度計算
+                # 角度計算（数値化）
                 current_angle = calculate_angle(p2, p3, p4)
                 
                 # 骨格描画
                 mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
                 
-                # 関節横に角度を表示
-                cv2.putText(image, f"{int(current_angle)}", tuple(np.multiply(p3, [1, 1]).astype(int)), 
+                # 関節横に数値を描画
+                cv2.putText(image, str(int(current_angle)), tuple(np.multiply(p3, [1, 1]).astype(int)), 
                             cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
 
-        # --- ゲーム操作ロジック（角度 → パドル位置） ---
-        # 修正点3: 親指の開閉と動作の連動
-        # 170度付近(開) → 画面右へ / 90度付近(閉) → 画面左へ
-        # np.interpを使って角度を画面のX座標にマッピング
+        # --- カーソル操作ロジック ---
+        # 角度(90度〜160度)を、パネルの縦位置(行)にマッピングする
+        # Open(160度) -> 上の行 / Close(90度) -> 下の行
         
-        # 角度の範囲を [90, 160] と仮定してマッピングします
-        paddle_x = np.interp(current_angle, [90, 160], [0, window_width - paddle_width])
+        # 3段階に行を分ける
+        target_row = 1 # デフォルトは真ん中
         
-        # ステータス判定
-        if current_angle > 150:
-            status_text = "Open"
-        elif current_angle < 100:
-            status_text = "Close"
+        if current_angle > 140:
+            target_row = 0 # 上段 (Open)
+        elif current_angle < 110:
+            target_row = 2 # 下段 (Close)
         else:
-            status_text = "Move"
-
-        # --- ゲームの更新処理 ---
-        if not game_over:
-            # ボールの移動
-            ball_x += ball_dx
-            ball_y += ball_dy
+            target_row = 1 # 中段
             
-            # 壁との衝突
-            if ball_x <= 0 or ball_x >= window_width:
-                ball_dx *= -1
-            if ball_y <= 0:
-                ball_dy *= -1
+        # 横方向（列）はシンプルにするため、今回は「真ん中の列」固定か、
+        # あるいは「時間経過で左右に動く」などが考えられますが、
+        # まずは「親指の屈伸で高さを選ぶ」仕組みにします。
+        # ここでは簡易的に「真ん中の列（1列目）」を選択しつつ、
+        # もし手首の傾き等が取れれば左右もできますが、今回は「高さ制御」に特化します。
+        # 簡易版として、常に「真ん中の列」の、選択された行をターゲットにします。
+        # ※全抜きするには本来左右移動も必要ですが、まずは上下動作を確認してください。
+        
+        # カーソル位置の決定 (とりあえず真ん中の列：インデックス 1, 4, 7)
+        # 行0 -> パネル1 (index 1)
+        # 行1 -> パネル4 (index 4)
+        # 行2 -> パネル7 (index 7)
+        cursor_pos = target_row * 3 + 1 
+        
+        # --- 描画：ストラックアウトのパネル ---
+        for i in range(9):
+            r = i // 3
+            c = i % 3
+            px = start_x + c * (panel_width + 5)
+            py = start_y + r * (panel_height + 5)
             
-            # パドルとの衝突
-            if (paddle_y < ball_y + ball_radius < paddle_y + paddle_height and
-                paddle_x < ball_x < paddle_x + paddle_width):
-                ball_dy *= -1
+            # パネルが存在する場合
+            if panels[i]:
+                color = (0, 200, 0) # 緑
+                thickness = -1 # 塗りつぶし
                 
-            # 底に落ちた場合
-            if ball_y > window_height:
-                game_over = True
+                # カーソルが合っている場合
+                if i == cursor_pos:
+                    color = (0, 100, 255) # オレンジ（ハイライト）
                 
-            # ブロックとの衝突判定
-            # ボールの位置から行と列を計算
-            # 簡易的な衝突判定
-            row = int(ball_y // block_height)
-            col = int(ball_x // block_width)
-            
-            if 0 <= row < block_rows and 0 <= col < block_cols:
-                if blocks[row][col] == 1:
-                    blocks[row][col] = 0 # ブロック破壊
-                    ball_dy *= -1
-                    score += 10
+                cv2.rectangle(image, (px, py), (px + panel_width, py + panel_height), color, thickness)
+                # 番号描画
+                cv2.putText(image, str(i+1), (px + panel_width//2 - 10, py + panel_height//2 + 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+            else:
+                # 破壊されたパネル
+                cv2.rectangle(image, (px, py), (px + panel_width, py + panel_height), (50, 50, 50), 2)
 
-        # --- 描画処理 ---
+        # --- 情報表示（右サイド） ---
+        info_x = WIDTH - 140
         
-        # 1. ブロックの描画
-        for r in range(block_rows):
-            for c in range(block_cols):
-                if blocks[r][c] == 1:
-                    bx = c * block_width
-                    by = r * block_height
-                    cv2.rectangle(image, (bx, by), (bx + block_width - 2, by + block_height - 2), 
-                                  (50 + r*40, 150, 200), -1)
+        # 1. 角度数値表示（ゲージ削除・数値化）
+        cv2.putText(image, "Thumb Angle", (info_x, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        cv2.putText(image, f"{int(current_angle)} deg", (info_x, 120), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+        
+        # 2. 状態判定
+        status = "Mid"
+        if current_angle > 140: status = "Open (High)"
+        elif current_angle < 110: status = "Close (Low)"
+        
+        cv2.putText(image, status, (info_x, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 255, 255), 1)
 
-        # 2. パドルの描画
-        cv2.rectangle(image, (int(paddle_x), paddle_y), (int(paddle_x + paddle_width), paddle_y + paddle_height), 
-                      paddle_color, -1)
+        # 3. スコア
+        cv2.putText(image, f"Score: {score}", (info_x, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
         
-        # 3. ボールの描画
-        if not game_over:
-            cv2.circle(image, (int(ball_x), int(ball_y)), ball_radius, ball_color, -1)
-        else:
-            cv2.putText(image, "GAME OVER", (window_width//2 - 100, window_height//2),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv2.putText(image, "Press 'R' to Reset", (window_width//2 - 120, window_height//2 + 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # 4. メッセージ
+        cv2.putText(image, message, (WIDTH//2 - 100, HEIGHT - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, message_color, 2)
 
-        # 4. 情報表示パネル（修正点1: ゲージ削除 / 修正点2: 数値化）
-        # 左上に背景ボックス
-        cv2.rectangle(image, (0, window_height - 100), (220, window_height), (50, 50, 50), -1)
-        
-        # 角度表示（大きく）
-        cv2.putText(image, f"Angle: {int(current_angle)} deg", (10, window_height - 60),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        
-        # 状態表示
-        cv2.putText(image, f"Status: {status_text}", (10, window_height - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 1)
-        
-        # スコア表示
-        cv2.putText(image, f"Score: {score}", (window_width - 150, window_height - 20),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-
-        cv2.imshow('Thumb Control Block Breaker', image)
-
+        # --- 入力処理（スペースキーで投球） ---
         key = cv2.waitKey(10) & 0xFF
+        if key == ord(' '): # スペースキー
+            if panels[cursor_pos]: # パネルがある場合
+                panels[cursor_pos] = False # 破壊
+                score += 100
+                message = "HIT!"
+                message_color = (0, 255, 0)
+            else:
+                message = "Miss..."
+                message_color = (0, 0, 255)
+            last_throw_time = time.time()
+        
+        # メッセージのリセット
+        if time.time() - last_throw_time > 1.0 and message != "Aim & Press SPACE":
+            message = "Aim & Press SPACE"
+            message_color = (255, 255, 255)
+
         if key == ord('q'):
             break
-        if key == ord('r') and game_over:
-            # リセット処理
-            game_over = False
-            ball_x, ball_y = window_width // 2, window_height // 2
-            ball_dy = -4
-            score = 0
-            blocks = [[1 for _ in range(block_cols)] for _ in range(block_rows)]
+
+        cv2.imshow('Thumb ROM Struck Out', image)
 
 cap.release()
 cv2.destroyAllWindows()
