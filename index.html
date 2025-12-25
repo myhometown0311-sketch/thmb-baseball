@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Adjusted</title>
+  <title>Thumb Baseball - Final</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
     canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
-    /* 操作盤（オーバーレイ） */
+    /* 操作盤 */
     #overlay {
       position: fixed; top: 0; left: 0; width: 100%; height: 100%;
       background: rgba(0, 0, 0, 0.95);
@@ -50,6 +50,7 @@
       min-height: 40px; word-wrap: break-word; text-align: left;
     }
 
+    /* 反転ボタン（念のため残していますが、基本設定で合うはずです） */
     #invertBtn {
       display: none; position: absolute; top: 10px; left: 10px;
       padding: 8px 16px; font-size: 14px; font-weight: bold;
@@ -73,13 +74,13 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【遊び方】</strong><br>
+        <strong>【設定手順】</strong><br>
         1. プレイする手を選んでください。<br>
-        2. 親指を閉じてタップ。<br>
-        3. 親指を開いてタップ。<br>
+        2. <strong>親指をしっかり閉じて</strong>タップ（WAIT位置）。<br>
+        3. <strong>親指を大きく開いて</strong>タップ（SWING位置）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small>※手首を緑の枠に合わせて固定し、親指だけ動かして打ってください。</small>
+        <small>親指を閉じるとバットが構えに戻り、開くと振ります。</small>
       </div>
     </div>
 
@@ -324,13 +325,11 @@ function windowResized() {
 }
 
 function updateLayout() {
-  // ★位置調整：手首のガイド位置を少し下げて、自然な位置に
   if (isRightHand) {
     batRangeStart = width * 0.80; batRangeEnd = width * 0.50; guidePositionX = width * 0.85;
   } else {
     batRangeStart = width * 0.20; batRangeEnd = width * 0.50; guidePositionX = width * 0.15;
   }
-  // 高さの75%の位置（以前より下）に配置
   guidePositionY = height * 0.75;
 }
 
@@ -394,9 +393,7 @@ function drawAlwaysGuide() {
   } else {
     stroke(255, 0, 0); noFill();
   }
-  // 円のサイズ
   strokeWeight(4); ellipse(centerX, centerY, 120, 120); 
-  // 手のひらエリア枠（位置調整）
   strokeWeight(2); rect(centerX - 175, centerY - 250, 350, 350, 20);
 }
 
@@ -433,16 +430,21 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
+  // ■ 変更点：マッピングの方向を「閉じる(0)→開く(1)」に厳格化
   let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
+  
+  // ■ 変更点：WAIT位置でバットをピタッと止める「あそび（デッドゾーン）」を設定
+  // 10%くらい開くまでは反応させない
+  if (rawProgress < 0.1) rawProgress = 0;
+  
   let progress = constrain(rawProgress, 0, 1);
 
   if (isInverted) progress = 1.0 - progress;
   
-  let isBatActive = (progress >= 0.05); 
+  // 0.1以上開いたらアクティブ
+  let isBatActive = (progress >= 0.1); 
   
-  // ★位置調整：バットの高さを手首位置周辺に固定して、より直感的に
   let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
-  // 手首の少し上あたりをバットの高さとする
   let batY = guidePositionY - 80;
   
   push();
@@ -453,12 +455,14 @@ function playGame() {
   if (isBatActive) { 
     fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0); 
   } else { 
+    // WAIT状態の色
     fill(100, 150); noStroke(); 
   }
   rect(-15, 0, 30, 140, 10); 
   
   if (!isBatActive) { 
-    fill(255); textSize(20); textAlign(CENTER); noStroke(); 
+    // ■ WAIT表示
+    fill(255); textSize(24); textAlign(CENTER); noStroke(); 
     rotate(isRightHand ? -PI/4 : PI/4); 
     text("WAIT", 0, -30); 
   }
@@ -470,7 +474,6 @@ function playGame() {
     let b = balls[i]; b.update(); b.display();
     
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    // ボールが手元に来たかどうか
     let inZone = (distToGuide < 200); 
     let hitThreshold = 350; 
     
@@ -534,8 +537,6 @@ function drawGameUI(progress) {
   let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
   text(`Life: ${hearts}${empty}`, 20, 20);
 
-  // ★変更点：ゲージ表示コードを削除しました（非表示化）
-  
   if (messageTimer > 0) {
     textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
     textSize(60); text(message, width/2, height/3); messageTimer--;
@@ -552,10 +553,8 @@ class Ball {
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
     
-    // ★位置調整：ボールが手元（バットの位置）に向かって飛んでくるように修正
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
-    // ガイド位置より少し上（バットの位置）を狙う
     let targetY = guidePositionY - 80; 
     
     let dirX = targetX - this.startX; let dirY = targetY - this.startY;
@@ -587,4 +586,3 @@ class Ball {
 </script>
 </body>
 </html>
-
