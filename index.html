@@ -1,191 +1,681 @@
-import cv2
-import mediapipe as mp
-import numpy as np
-import time
-
-# --- 1. 関数定義: 角度計算 ---
-def calculate_angle(a, b, c):
-    """3点間の角度を計算 (0〜180度)"""
-    a = np.array(a)
-    b = np.array(b)
-    c = np.array(c)
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Thumb Baseball - Enhanced</title>
+  <style>
+    body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
-    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
-    angle = np.abs(radians*180.0/np.pi)
+    canvas { display: block; position: absolute; top: 0; left: 0; width: 100% !important; height: 100% !important; z-index: 0; }
     
-    if angle > 180.0:
-        angle = 360 - angle
-    return angle
+    /* 操作盤（オーバーレイ） */
+    #overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0, 0, 0, 0.95);
+      display: flex; flex-direction: row; 
+      justify-content: center; align-items: center;
+      z-index: 1000; color: white; text-align: center;
+      pointer-events: auto;
+    }
 
-# --- 2. ゲーム設定 ---
-# 画面サイズ
-WIDTH, HEIGHT = 640, 480
+    #left-panel { width: 45%; padding: 10px; display: flex; justify-content: center; }
+    #instruction {
+      background: rgba(255, 255, 255, 0.15);
+      border: 1px solid #777;
+      border-radius: 8px; padding: 15px;
+      font-size: 14px; line-height: 1.8; color: white;
+      text-align: left; width: 100%; max-width: 400px;
+    }
 
-# パネル（的）の設定：3x3のグリッド
-rows, cols = 3, 3
-panels = [True] * 9  # Trueならパネルが存在、Falseなら破壊済み
-panel_margin = 10
-panel_width = (WIDTH - 150) // cols  # 右側に情報表示スペースを空ける
-panel_height = (HEIGHT - 100) // rows
-start_x = 20
-start_y = 50
-
-# カーソル位置（初期値）
-cursor_pos = 4  # 0~8のインデックス（中心は4）
-
-# ゲーム状態
-score = 0
-message = "Aim & Press SPACE"
-message_color = (255, 255, 255)
-last_throw_time = 0
-
-# --- 3. メイン処理 ---
-mp_drawing = mp.solutions.drawing_utils
-mp_hands = mp.solutions.hands
-
-cap = cv2.VideoCapture(0)
-cap.set(3, WIDTH)
-cap.set(4, HEIGHT)
-
-with mp_hands.Hands(
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.5,
-    max_num_hands=1
-) as hands:
+    #right-panel { width: 45%; padding: 10px; display: flex; flex-direction: column; align-items: center; }
     
-    while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
-            break
-        
-        # 鏡のように反転
-        frame = cv2.flip(frame, 1)
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        image.flags.writeable = False
-        
-        results = hands.process(image)
-        
-        image.flags.writeable = True
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        
-        current_angle = 0
-        
-        # ハンドトラッキング処理
-        if results.multi_hand_landmarks:
-            for hand_landmarks in results.multi_hand_landmarks:
-                h, w, _ = image.shape
-                
-                # 親指の座標取得 (CM, MP, IP/Tip)
-                p2 = [hand_landmarks.landmark[2].x * w, hand_landmarks.landmark[2].y * h]
-                p3 = [hand_landmarks.landmark[3].x * w, hand_landmarks.landmark[3].y * h]
-                p4 = [hand_landmarks.landmark[4].x * w, hand_landmarks.landmark[4].y * h]
-                
-                # 角度計算（数値化）
-                current_angle = calculate_angle(p2, p3, p4)
-                
-                # 骨格描画
-                mp_drawing.draw_landmarks(image, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-                
-                # 関節横に数値を描画
-                cv2.putText(image, str(int(current_angle)), tuple(np.multiply(p3, [1, 1]).astype(int)), 
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2, cv2.LINE_AA)
+    h1 { margin: 0 0 20px 0; font-size: 28px; color: #ffff00; text-shadow: 0 0 10px rgba(255,255,0,0.5); }
 
-        # --- カーソル操作ロジック ---
-        # 角度(90度〜160度)を、パネルの縦位置(行)にマッピングする
-        # Open(160度) -> 上の行 / Close(90度) -> 下の行
-        
-        # 3段階に行を分ける
-        target_row = 1 # デフォルトは真ん中
-        
-        if current_angle > 140:
-            target_row = 0 # 上段 (Open)
-        elif current_angle < 110:
-            target_row = 2 # 下段 (Close)
-        else:
-            target_row = 1 # 中段
-            
-        # 横方向（列）はシンプルにするため、今回は「真ん中の列」固定か、
-        # あるいは「時間経過で左右に動く」などが考えられますが、
-        # まずは「親指の屈伸で高さを選ぶ」仕組みにします。
-        # ここでは簡易的に「真ん中の列（1列目）」を選択しつつ、
-        # もし手首の傾き等が取れれば左右もできますが、今回は「高さ制御」に特化します。
-        # 簡易版として、常に「真ん中の列」の、選択された行をターゲットにします。
-        # ※全抜きするには本来左右移動も必要ですが、まずは上下動作を確認してください。
-        
-        # カーソル位置の決定 (とりあえず真ん中の列：インデックス 1, 4, 7)
-        # 行0 -> パネル1 (index 1)
-        # 行1 -> パネル4 (index 4)
-        # 行2 -> パネル7 (index 7)
-        cursor_pos = target_row * 3 + 1 
-        
-        # --- 描画：ストラックアウトのパネル ---
-        for i in range(9):
-            r = i // 3
-            c = i % 3
-            px = start_x + c * (panel_width + 5)
-            py = start_y + r * (panel_height + 5)
-            
-            # パネルが存在する場合
-            if panels[i]:
-                color = (0, 200, 0) # 緑
-                thickness = -1 # 塗りつぶし
-                
-                # カーソルが合っている場合
-                if i == cursor_pos:
-                    color = (0, 100, 255) # オレンジ（ハイライト）
-                
-                cv2.rectangle(image, (px, py), (px + panel_width, py + panel_height), color, thickness)
-                # 番号描画
-                cv2.putText(image, str(i+1), (px + panel_width//2 - 10, py + panel_height//2 + 10),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-            else:
-                # 破壊されたパネル
-                cv2.rectangle(image, (px, py), (px + panel_width, py + panel_height), (50, 50, 50), 2)
+    .btn-container { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 300px; }
 
-        # --- 情報表示（右サイド） ---
-        info_x = WIDTH - 140
-        
-        # 1. 角度数値表示（ゲージ削除・数値化）
-        cv2.putText(image, "Thumb Angle", (info_x, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-        cv2.putText(image, f"{int(current_angle)} deg", (info_x, 120), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
-        
-        # 2. 状態判定
-        status = "Mid"
-        if current_angle > 140: status = "Open (High)"
-        elif current_angle < 110: status = "Close (Low)"
-        
-        cv2.putText(image, status, (info_x, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 255, 255), 1)
+    .hand-btn {
+      padding: 20px 0; font-size: 22px; font-weight: bold;
+      color: #000; background: #ffff00; border: 4px solid #fff; border-radius: 15px; 
+      cursor: pointer; width: 100%; 
+      box-shadow: 0 5px 15px rgba(255, 255, 0, 0.4);
+      transition: transform 0.1s, background 0.1s;
+    }
+    .hand-btn:active { background: #ffaa00; transform: scale(0.95); }
+    
+    /* ログ表示エリア */
+    #statusLog {
+      margin-top: 20px; color: #00ff00; font-weight: bold; 
+      font-size: 14px; background: #222; border: 1px solid #555;
+      padding: 10px; border-radius: 5px; width: 100%; max-width: 300px;
+      min-height: 40px; word-wrap: break-word; text-align: left;
+    }
 
-        # 3. スコア
-        cv2.putText(image, f"Score: {score}", (info_x, 300), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
-        
-        # 4. メッセージ
-        cv2.putText(image, message, (WIDTH//2 - 100, HEIGHT - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.8, message_color, 2)
+    /* 反転ボタン */
+    #invertBtn {
+      display: none; position: absolute; top: 10px; left: 10px;
+      padding: 8px 16px; font-size: 14px; font-weight: bold;
+      background: #444; color: white; border: 2px solid white; border-radius: 50px;
+      z-index: 2000; cursor: pointer;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    }
 
-        # --- 入力処理（スペースキーで投球） ---
-        key = cv2.waitKey(10) & 0xFF
-        if key == ord(' '): # スペースキー
-            if panels[cursor_pos]: # パネルがある場合
-                panels[cursor_pos] = False # 破壊
-                score += 100
-                message = "HIT!"
-                message_color = (0, 255, 0)
-            else:
-                message = "Miss..."
-                message_color = (0, 0, 255)
-            last_throw_time = time.time()
-        
-        # メッセージのリセット
-        if time.time() - last_throw_time > 1.0 and message != "Aim & Press SPACE":
-            message = "Aim & Press SPACE"
-            message_color = (255, 255, 255)
+    #rawVideo { display: none; }
+  </style>
+  
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
 
-        if key == ord('q'):
-            break
+  <video id="rawVideo" playsinline webkit-playsinline muted autoplay></video>
+  
+  <button id="invertBtn" onclick="toggleInvert()">🔄 動きを反転</button>
 
-        cv2.imshow('Thumb ROM Struck Out', image)
+  <div id="overlay">
+    <div id="left-panel">
+      <div id="instruction">
+        <strong>【遊び方・手順】</strong><br>
+        1. 右側のボタンでプレイする手を選んでください。<br>
+        2. カメラの使用を許可してください。<br>
+        3. <strong>設定①：</strong>親指を閉じて画面をタップ。<br>
+        4. <strong>設定②：</strong>親指を開いて画面をタップ。<br>
+        ➜ <strong>ゲームスタート！</strong><br>
+        <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
+        <small>※親指の曲げ伸ばしでバットを操作します。<br>※動きが逆の場合は左上のボタンで反転可能。</small>
+      </div>
+    </div>
 
-cap.release()
-cv2.destroyAllWindows()
+    <div id="right-panel">
+      <h1>Thumb Baseball</h1>
+      <div id="btn-group" class="btn-container">
+        <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ ✋</button>
+        <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ ✋</button>
+      </div>
+      <div id="statusLog">準備完了。ボタンを押してください。</div>
+    </div>
+  </div>
 
+<script>
+/**
+ * エラーハンドリング
+ */
+window.onerror = function(msg, url, line) {
+  const el = document.getElementById('statusLog');
+  if(el) { el.innerHTML = "⚠️ エラー:<br>" + msg; el.style.color = "#ff5555"; }
+};
+
+// --- グローバル変数 ---
+let rawVideo = document.getElementById('rawVideo');
+let hands = null;
+let camera = null;
+let thumbTip = null, indexBase = null, wrist = null;
+let handDetected = false;
+let isGameStarted = false;
+let isRightHand = true; 
+
+// ゲーム状態: 1=設定(閉), 2=設定(開), 3=プレイ中, 4=警告, 5=GameOver
+let gameState = 1; 
+let angleClosed = 0, angleOpen = 0;
+let smoothedAngle = 0; 
+let currentAngle = 0;
+let fixedWristPosition = null; 
+
+// ゲーム内オブジェクト
+let balls = [];
+let panels = []; 
+let score = 0;
+let level = 1; 
+let maxLives = 3;
+let lives = maxLives;
+let combo = 0;
+
+let message = "", messageTimer = 0, messageColor;
+let bgImage = null;
+let audioCtx = null;
+let isInverted = false;
+
+// レイアウト座標
+let batRangeStart, batRangeEnd; 
+let guidePositionX, guidePositionY;
+let panelStartX;
+
+function log(msg) {
+  const el = document.getElementById('statusLog');
+  if(el) el.innerHTML = msg;
+}
+
+// --- p5.js Setup & Draw ---
+
+function setup() {
+  pixelDensity(1);
+  let cnv = createCanvas(windowWidth, windowHeight);
+  cnv.style('z-index', '-1'); 
+  
+  // 背景画像の読み込み（失敗時はnullのまま）
+  loadImage('stadium_bg.png', 
+    (img) => { bgImage = img; },
+    (err) => { console.log("背景画像なし: デフォルト背景を使用します"); }
+  );
+
+  updateLayout();
+  initPanels();
+  log("準備OK。手を選んでください。");
+}
+
+function draw() {
+  // 背景描画
+  if (bgImage) {
+    let imgAspect = bgImage.width / bgImage.height;
+    let canvasAspect = width / height;
+    let dw, dh, dx, dy;
+    if (canvasAspect > imgAspect) { dw=width; dh=width/imgAspect; dx=0; dy=(height-dh)/2; }
+    else { dh=height; dw=height*imgAspect; dy=0; dx=(width-dw)/2; }
+    image(bgImage, dx, dy, dw, dh);
+  } else {
+    // 画像がない場合のフォールバック（緑のグラウンド）
+    background(34, 139, 34);
+    // 芝目
+    noStroke(); fill(0, 100, 0, 50);
+    for(let i=0; i<height; i+=40) rect(0, i, width, 20);
+  }
+
+  if (!isGameStarted) return;
+
+  // カメラ映像の描画（薄く表示）
+  if (rawVideo && rawVideo.readyState >= 2) {
+    push();
+    translate(width, 0); scale(-1, 1); tint(255, 80); // 透明度調整
+    drawingContext.drawImage(rawVideo, 0, 0, width, height);
+    pop();
+  }
+
+  // 骨格表示
+  if (handDetected && wrist && thumbTip) {
+    stroke(255, 0, 0); strokeWeight(3); 
+    line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+    fill(255,0,0); noStroke(); circle(thumbTip.x, thumbTip.y, 10);
+  }
+
+  handleInput();
+  drawPanels();
+  drawAlwaysGuide();
+
+  // 状態遷移
+  if (gameState === 3) {
+    playGame();
+  } else if (gameState === 4) {
+    drawErrorScreen();
+  } else if (gameState === 5) {
+    drawGameOverScreen();
+  } else {
+    drawSetupUI();
+  }
+}
+
+// --- 初期化フロー ---
+
+function handleClick(hand) {
+  document.getElementById('btn-group').style.display = 'none';
+  log("起動中...カメラを許可してください");
+  // UIブロック回避のためにsetTimeout
+  setTimeout(() => { startSequence(hand); }, 100);
+}
+
+function toggleInvert() {
+  isInverted = !isInverted;
+  const btn = document.getElementById('invertBtn');
+  btn.style.background = isInverted ? "#5555ff" : "#444";
+  btn.innerText = isInverted ? "🔄 現在:反転中" : "🔄 動きを反転";
+}
+
+async function startSequence(hand) {
+  isRightHand = (hand === 'right');
+  
+  // AudioContextの初期化（ユーザー操作が必要なためここで）
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if(AudioContext) { audioCtx = new AudioContext(); audioCtx.resume(); }
+  } catch(e) {}
+
+  updateLayout();
+  initPanels();
+  startCamera();
+}
+
+function startCamera() {
+  const constraints = {
+    audio: false,
+    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }
+  };
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    alert("このブラウザはカメラ非対応です"); return;
+  }
+
+  navigator.mediaDevices.getUserMedia(constraints)
+    .then(stream => {
+      rawVideo.srcObject = stream;
+      rawVideo.onloadedmetadata = () => {
+        rawVideo.play();
+        log("AIエンジン読み込み中...");
+        initMediaPipe(); 
+      };
+    })
+    .catch(err => {
+      alert("カメラエラー: " + err.message);
+      document.getElementById('btn-group').style.display = 'flex';
+      log("カメラへのアクセスが拒否されました");
+    });
+}
+
+function initMediaPipe() {
+  if (typeof Hands === 'undefined') {
+    log("AIライブラリ未ロード。リロードしてください。"); return;
+  }
+
+  hands = new Hands({locateFile: (file) => 'https://cdn.jsdelivr.net/npm/@mediapipe/hands/' + file});
+  hands.setOptions({
+    maxNumHands: 1, 
+    modelComplexity: 1, 
+    minDetectionConfidence: 0.7, 
+    minTrackingConfidence: 0.7
+  });
+  hands.onResults(onResults);
+
+  camera = new Camera(rawVideo, {
+    onFrame: async () => { 
+      if(rawVideo.videoWidth > 0 && !rawVideo.paused) {
+        await hands.send({image: rawVideo}); 
+      }
+    },
+    width: 640, height: 480
+  });
+  
+  camera.start().then(() => {
+    log("完了！ゲーム画面へ...");
+    setTimeout(() => {
+      document.getElementById('overlay').style.display = 'none';
+      document.getElementById('invertBtn').style.display = 'block';
+      isGameStarted = true;
+    }, 500);
+  });
+}
+
+function onResults(results) {
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    handDetected = true;
+    const lm = results.multiHandLandmarks[0];
+    
+    // 座標変換 (左右反転を考慮)
+    thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
+    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
+    wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
+    
+    // 角度計算 (人差し指の付け根・手首・親指先のなす角)
+    let v1 = p5.Vector.sub(indexBase, wrist);
+    let v2 = p5.Vector.sub(thumbTip, wrist);
+    let rawAngle = v1.angleBetween(v2);
+    
+    if (smoothedAngle === 0) smoothedAngle = rawAngle;
+    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.3); // スムージング
+  } else {
+    handDetected = false;
+  }
+}
+
+// --- 入力とゲームロジック ---
+
+function handleInput() {
+  if (gameState === 5 || gameState === 4) return;
+  if (handDetected) {
+    if (gameState === 1) { 
+        angleClosed = smoothedAngle; 
+        gameState = 2; 
+    } else if (gameState === 2) { 
+        angleOpen = smoothedAngle;
+        // 固定位置を記録
+        fixedWristPosition = createVector(wrist.x, wrist.y);
+        gameState = 3; // ゲーム開始
+        showMessage("START!", color(255, 255, 0));
+    }
+  }
+}
+
+// タップ/クリック判定
+function touchStarted() { 
+  if (!isGameStarted) return true; 
+  if (gameState === 1 || gameState === 2) handleInput();
+  if (gameState === 5 || gameState === 4) resetGame();
+  return false; 
+}
+function mousePressed() { 
+  if (!isGameStarted) return true;
+  if (gameState === 1 || gameState === 2) handleInput();
+  if (gameState === 5 || gameState === 4) resetGame();
+}
+
+function resetGame() {
+  gameState = 1; balls = []; score = 0; level = 1; lives = maxLives; combo = 0;
+  fixedWristPosition = null; initPanels();
+  angleClosed = 0; angleOpen = 0; smoothedAngle = 0;
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  updateLayout();
+  initPanels();
+}
+
+function updateLayout() {
+  // 手の左右によってバット位置とガイド位置を変更
+  if (isRightHand) {
+    batRangeStart = width * 0.85; batRangeEnd = width * 0.55; guidePositionX = width * 0.85;
+  } else {
+    batRangeStart = width * 0.15; batRangeEnd = width * 0.45; guidePositionX = width * 0.15;
+  }
+  guidePositionY = height / 2 + 100;
+}
+
+function initPanels() {
+  panels = [];
+  let cols = 3; let rows = 3;
+  let shrinkRate = constrain(1.0 - (level - 1) * 0.1, 0.5, 1.0);
+  let basePanelW = width * 0.06; let basePanelH = height * 0.10;
+  let panelW = basePanelW * shrinkRate; let panelH = basePanelH * shrinkRate;
+  let panelGap = 15 + (1 - shrinkRate) * 20;
+  let levelLift = (level - 1) * (height * 0.05);
+  
+  if (isRightHand) { panelStartX = width * 0.02; } 
+  else { 
+    let totalPanelW = cols * panelW + (cols - 1) * panelGap;
+    panelStartX = width - totalPanelW - width * 0.02; 
+  }
+
+  let totalH = rows * panelH + (rows - 1) * panelGap;
+  let panelStartY = (height - totalH - height * 0.05) - levelLift; 
+  if (panelStartY < height * 0.1) panelStartY = height * 0.1;
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      let num = r * 3 + c + 1;
+      panels.push({
+        col: c, row: r, 
+        x: panelStartX + c * (panelW + panelGap),
+        y: panelStartY + r * (panelH + panelGap),
+        w: panelW, h: panelH, num: num, active: true
+      });
+    }
+  }
+}
+
+// --- 描画関数群 ---
+
+function drawPanels() {
+  if (panels.every(p => !p.active)) {
+    showMessage("PERFECT! Next Level!", color(0, 255, 255));
+    if (frameCount % 60 === 0) initPanels(); 
+  }
+  for (let p of panels) {
+    if (p.active) {
+      fill(0, 255, 0, 150); stroke(255); strokeWeight(3);
+      rect(p.x, p.y, p.w, p.h, 5);
+      let txtSize = min(p.w, p.h) * 0.6;
+      fill(255); noStroke(); textSize(txtSize); textStyle(BOLD); textAlign(CENTER, CENTER);
+      text(p.num, p.x + p.w/2, p.y + p.h/2);
+    } else {
+      fill(50, 50); stroke(100); strokeWeight(1);
+      rect(p.x, p.y, p.w, p.h, 5);
+    }
+  }
+}
+
+function drawAlwaysGuide() {
+  noFill(); 
+  let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
+  let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
+  
+  // ガイド円（手首位置）
+  if (handDetected) {
+    stroke(0, 255, 0); 
+    if (gameState < 3) fill(0, 255, 0, 50);
+  } else {
+    stroke(255, 0, 0); noFill();
+  }
+  strokeWeight(4); ellipse(centerX, centerY, 120, 120); 
+  
+  // 手のひらエリア枠
+  strokeWeight(2); rect(centerX - 175, centerY - 350, 350, 450, 20);
+}
+
+function drawSetupUI() {
+  textAlign(CENTER, CENTER); textSize(28); fill(255); stroke(0); strokeWeight(4);
+  let uiX = guidePositionX; let uiY = guidePositionY - 280;
+  let textOffset = isRightHand ? -150 : 150;
+
+  if (!handDetected) { text("カメラに手を映してください", width/2, height/2); return; }
+  
+  if (gameState === 1) {
+      text(`【設定1/2】親指を閉じてタップ`, uiX + textOffset, uiY);
+  } else if (gameState === 2) {
+      text(`【設定2/2】親指を開いてタップ`, uiX + textOffset, uiY);
+  }
+}
+
+function drawErrorScreen() {
+  fill(0, 150); rect(0, 0, width, height);
+  textAlign(CENTER, CENTER); textSize(40); fill(255, 50, 50); stroke(255); strokeWeight(5);
+  text("手が動きすぎです！", width/2, height/2 - 50);
+  textSize(24); fill(255); noStroke();
+  text("手首を固定してください。\n画面タップで再開", width/2, height/2 + 50);
+}
+
+function drawGameOverScreen() {
+  fill(0, 200); rect(0, 0, width, height);
+  textAlign(CENTER, CENTER); 
+  fill(255, 50, 50); stroke(255); strokeWeight(5); textSize(60);
+  text("GAME OVER", width/2, height/2 - 50);
+  fill(255); noStroke(); textSize(30);
+  text(`Total Score: ${score}`, width/2, height/2 + 30);
+  textSize(24); text("画面タップでリトライ", width/2, height/2 + 100);
+}
+
+function playGame() {
+  let rawProgress = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
+  let progress = constrain(rawProgress, 0, 1);
+
+  if (isInverted) {
+    progress = 1.0 - progress;
+  }
+  
+  // 遊び（デッドゾーン）の設定
+  let isBatActive = (progress >= 0.05); 
+  currentCm = progress * 10.0; 
+
+  let batX = map(progress, 0, 1, batRangeStart, batRangeEnd);
+  let batY = map(progress, 0, 1, height - 100, height - 250);
+  
+  let batBaseLen = 140;
+  let batLen = max(batBaseLen - (level - 1) * 10, 50); 
+
+  // バットの描画
+  push();
+  translate(batX, batY);
+  if (isRightHand) rotate(map(progress, 0, 1, PI/4, -PI/4));
+  else rotate(map(progress, 0, 1, -PI/4, PI/4));
+  
+  if (isBatActive) { 
+    fill(progress > 0.8 ? color(255,50,50) : color(255,255,0)); stroke(0); 
+  } else { 
+    fill(100, 150); noStroke(); 
+  }
+  
+  // バット形状
+  rect(-15, 0, 30, 140, 10); 
+  
+  if (!isBatActive) { 
+    fill(255); textSize(20); textAlign(CENTER); noStroke(); 
+    rotate(isRightHand ? -PI/4 : PI/4); 
+    text("WAIT", 0, -30); 
+  }
+  pop();
+
+  // ボールの生成と制御
+  if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball(level));
+
+  for (let i = balls.length - 1; i >= 0; i--) {
+    let b = balls[i]; b.update(); b.display();
+    
+    let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
+    let inZone = (distToGuide < 150); 
+    let hitThreshold = 400; 
+    
+    // ヒット判定
+    if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
+      playHitSound(); b.hit(progress); 
+    }
+
+    // パネルヒット判定
+    if (b.isHit) {
+      for (let p of panels) {
+        if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
+          p.active = false; score++; combo++;
+          // コンボメッセージ
+          if (combo > 40) showMessage("GODLIKE!!", color(255, 0, 0));
+          else if (combo > 30) showMessage("LEGENDARY!", color(255, 0, 255));
+          else if (combo > 20) showMessage("UNSTOPPABLE!", color(255, 100, 0));
+          else if (combo > 10) showMessage("GREAT!", color(255, 255, 0));
+          else showMessage("NICE HIT!", color(255, 255, 0));
+          
+          checkLevelUp(); balls.splice(i, 1); break;
+        }
+      }
+    }
+
+    // 画面外判定
+    if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) {
+      if (!b.isHit) {
+        lives--; combo = 0; showMessage("MISS...", color(100, 100, 255));
+        if (lives <= 0) gameState = 5;
+      }
+      balls.splice(i, 1);
+    }
+  }
+  drawGameUI(progress);
+}
+
+function checkLevelUp() {
+  if (score > 0 && score % 10 === 0) { level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0)); }
+}
+
+function playHitSound() {
+  if (audioCtx && audioCtx.state === 'running') {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
+    osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.1);
+  }
+}
+
+function drawGameUI(progress) {
+  fill(255); stroke(0); strokeWeight(4);
+  textAlign(RIGHT, TOP); textSize(32); 
+  text(`SCORE: ${score}`, width - 20, 20); text(`Lv.${level}`, width - 20, 60);
+
+  if (combo > 1) { fill(255, 200, 0); textSize(40); text(`${combo} COMBO!`, width - 20, 110); }
+
+  textAlign(LEFT, TOP); fill(255, 50, 50); textSize(32);
+  let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
+  text(`Life: ${hearts}${empty}`, 20, 20);
+
+  // 可動域バーの表示
+  let uiW = 220; let uiX = width / 2 - uiW / 2; let uiY = 10; 
+  fill(0, 150); noStroke(); rect(uiX, uiY, uiW, 80, 10);
+  fill(255); textAlign(CENTER, TOP); textSize(16); noStroke();
+  text("Thumb Power", uiX + uiW/2, uiY + 5);
+  textSize(30); textStyle(BOLD); text((progress*100).toFixed(0) + " %", uiX + uiW/2, uiY + 30);
+
+  let barX = uiX + 10; let barY = uiY + 70; let barW = 200;
+  stroke(255); strokeWeight(2); noFill(); rect(barX, barY, barW, 10); 
+  
+  if (progress < 0.05) fill(100); 
+  else fill(255, map(progress,0,1,100,255), 0);
+  
+  rect(barX, barY, map(progress, 0, 1, 0, barW), 10); 
+
+  // メッセージ表示
+  if (messageTimer > 0) {
+    textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
+    textSize(60); text(message, width/2, height/3); messageTimer--;
+  }
+}
+
+function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
+
+// --- Ball クラス ---
+
+class Ball {
+  constructor(currentLevel) {
+    this.startX = isRightHand ? width * 0.1 : width * 0.9;
+    this.startY = height * 0.6; 
+    this.x = this.startX; this.y = this.startY; 
+    
+    let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
+    let speed = random(baseSpeed, baseSpeed + 2); 
+    
+    // ホームベース（ガイド位置）に向かって飛ぶ
+    let homeBaseCenterX = guidePositionX;
+    let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
+    let targetY = guidePositionY - 50; 
+    
+    let dirX = targetX - this.startX; let dirY = targetY - this.startY;
+    let distLen = sqrt(dirX*dirX + dirY*dirY);
+    this.vx = (dirX / distLen) * speed; this.vy = (dirY / distLen) * speed;
+    this.isHit = false; this.ballColor = color(255);
+  }
+  
+  update() { 
+    this.x += this.vx; this.y += this.vy; 
+    if (this.isHit) {
+        // ヒット後は少し重力を受ける演出など
+        // this.vy += 0.2; 
+    }
+  }
+  
+  display() { fill(this.ballColor); stroke(0); strokeWeight(1); ellipse(this.x, this.y, 30); }
+  
+  hit(progress) {
+    this.isHit = true; this.ballColor = color(255, 255, 0);
+    
+    let areaW = 3 * panels[0].w + 30; 
+    let areaLeft, areaRight;
+    
+    if (isRightHand) { areaLeft = panelStartX; areaRight = panelStartX + areaW; } 
+    else { areaLeft = panelStartX; areaRight = panelStartX + areaW; }
+    
+    // 可動域に応じてターゲット位置を変化
+    let targetX;
+    if (isRightHand) targetX = map(progress, 0.3, 0.9, areaRight, areaLeft);
+    else targetX = map(progress, 0.3, 0.9, areaLeft, areaRight);
+    
+    let areaTop = panels[0].y; let areaBottom = panels[8].y + panels[8].h;
+    let targetY = map(constrain(progress, 0.3, 0.6), 0.3, 0.6, areaBottom, areaTop - 30); 
+    
+    let dx = targetX - this.x; let dy = targetY - this.y;
+    let distLen = sqrt(dx*dx + dy*dy);
+    let flySpeed = 30; // 打ち返す速度
+    this.vx = (dx / distLen) * flySpeed; this.vy = (dy / distLen) * flySpeed;
+  }
+}
+</script>
+</body>
+</html>
 
