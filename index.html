@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Stable</title>
+  <title>Thumb Baseball - Index Anchor</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -70,12 +70,12 @@
         3. <strong>親指を開いて</strong>タップ（スイング）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small><strong>改善点</strong><br>・手ブレ補正を強化（ビタ止まりします）<br>・ガイド枠の意味を表示</small>
+        <small><strong>変更点</strong><br>・ガイド位置を「人差し指の付け根」に変更<br>・バットの反応速度を向上</small>
       </div>
     </div>
 
     <div id="right-panel">
-      <h1>Thumb Baseball<br><span style="font-size:0.6em">Stable Edition</span></h1>
+      <h1>Thumb Baseball<br><span style="font-size:0.6em">V3: Index Anchor</span></h1>
       <div id="btn-group" class="btn-container">
         <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ ✋</button>
         <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ ✋</button>
@@ -101,7 +101,7 @@ let isRightHand = true;
 let gameState = 1; 
 let angleClosed = 0, angleOpen = 0;
 let smoothedAngle = 0; 
-let fixedWristPosition = null; 
+let fixedAnchorPosition = null; // 手首ではなく人差し指の付け根を固定
 
 // --- 物理演算用変数 ---
 let batCurrentProgress = 0; 
@@ -167,10 +167,13 @@ function draw() {
     pop();
   }
 
-  if (handDetected && wrist && thumbTip) {
+  if (handDetected && indexBase && thumbTip) {
     stroke(255, 0, 0); strokeWeight(3); 
-    line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
+    // 人差し指の付け根から親指へのライン
+    line(indexBase.x, indexBase.y, thumbTip.x, thumbTip.y);
     fill(255,0,0); noStroke(); circle(thumbTip.x, thumbTip.y, 10);
+    // 基準点（人差し指付け根）を表示
+    fill(0,0,255); circle(indexBase.x, indexBase.y, 10);
   }
 
   handleInput();
@@ -257,18 +260,19 @@ function onResults(results) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
     thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
-    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
+    indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height); // ここを基準にする
     wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
     
-    let v1 = p5.Vector.sub(indexBase, wrist);
-    let v2 = p5.Vector.sub(thumbTip, wrist);
+    // 角度計算：人差し指の付け根(indexBase)を中心に、手首(wrist)と親指(thumbTip)の角度を見るのが一番安定します
+    // または単純に indexBase -> thumbTip のベクトルと、indexBase -> wrist のベクトルの角度
+    let v1 = p5.Vector.sub(wrist, indexBase);
+    let v2 = p5.Vector.sub(thumbTip, indexBase);
     let rawAngle = v1.angleBetween(v2);
     
     if (smoothedAngle === 0) smoothedAngle = rawAngle;
     
-    // 【修正点】スムージングを強化
-    // 0.4(敏感) → 0.15(かなり滑らか)に変更してプルプルを防止
-    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.15); 
+    // 【修正】反応速度を改善（0.15だと遅すぎたため0.25へ）
+    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.25); 
   } else {
     handDetected = false;
   }
@@ -282,7 +286,8 @@ function handleInput() {
         gameState = 2; 
     } else if (gameState === 2) { 
         angleOpen = smoothedAngle;
-        fixedWristPosition = createVector(wrist.x, wrist.y);
+        // 【修正】手首ではなく「人差し指の付け根」を固定座標として保存
+        fixedAnchorPosition = createVector(indexBase.x, indexBase.y);
         gameState = 3; 
         showMessage("START!", color(255, 255, 0));
     }
@@ -303,7 +308,7 @@ function mousePressed() {
 
 function resetGame() {
   gameState = 1; balls = []; score = 0; level = 1; lives = maxLives; combo = 0;
-  fixedWristPosition = null; initPanels();
+  fixedAnchorPosition = null; initPanels();
   angleClosed = 0; angleOpen = 0; smoothedAngle = 0;
   batCurrentProgress = 0;
   batVelocity = 0;
@@ -379,8 +384,8 @@ function drawPanels() {
 
 function drawAlwaysGuide() {
   noFill(); 
-  let centerX = fixedWristPosition ? fixedWristPosition.x : guidePositionX;
-  let centerY = fixedWristPosition ? fixedWristPosition.y : guidePositionY;
+  let centerX = fixedAnchorPosition ? fixedAnchorPosition.x : guidePositionX;
+  let centerY = fixedAnchorPosition ? fixedAnchorPosition.y : guidePositionY;
   
   if (handDetected) {
     stroke(0, 255, 0); 
@@ -389,15 +394,15 @@ function drawAlwaysGuide() {
     stroke(255, 0, 0); noFill();
   }
   
-  // ガイド枠の描画
-  strokeWeight(4); ellipse(centerX, centerY, 120, 120); 
-  strokeWeight(2); rect(centerX - 175, centerY - 250, 350, 350, 20);
+  // ガイド枠の描画（サイズ調整）
+  strokeWeight(4); ellipse(centerX, centerY, 80, 80); // 指用なので少し小さく
+  strokeWeight(2); rect(centerX - 150, centerY - 250, 300, 350, 20);
 
   // ガイドの意味をテキストで表示
   if (gameState === 3) {
       noStroke(); fill(255, 255, 255, 100); textSize(16); textAlign(CENTER);
-      text("ここに手首を固定", centerX, centerY + 80);
-      text("ボールが来ます", centerX, centerY - 260);
+      text("人差し指の付け根", centerX, centerY + 60);
+      text("ここに固定", centerX, centerY + 80);
   }
 }
 
@@ -420,7 +425,7 @@ function drawErrorScreen() {
   textAlign(CENTER, CENTER); textSize(40); fill(255, 50, 50); stroke(255); strokeWeight(5);
   text("手が動きすぎです！", width/2, height/2 - 50);
   textSize(24); fill(255); noStroke();
-  text("手首を固定してください。\n画面タップで再開", width/2, height/2 + 50);
+  text("人差し指の付け根を枠に合わせてください。\n画面タップで再開", width/2, height/2 + 50);
 }
 
 function drawGameOverScreen() {
@@ -434,22 +439,31 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
+  // アンカー（人差し指付け根）が動きすぎていないかチェック
+  if (fixedAnchorPosition && indexBase) {
+    let d = dist(fixedAnchorPosition.x, fixedAnchorPosition.y, indexBase.x, indexBase.y);
+    // 許容範囲
+    if (d > 150) {
+      gameState = 4; // Error
+    }
+  }
+
   let rawTarget = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
   let target = constrain(rawTarget, 0, 1);
 
   // 物理挙動の計算
   let distance = target - batCurrentProgress;
   
-  // 【修正点】デッドゾーン（不感帯）
-  // 距離が非常に小さい(0.02未満)場合は、力を0にして揺れを完全に止める
-  if (abs(distance) < 0.02) distance = 0;
+  // 【修正】不感帯を弱めた（0.02 -> 0.005）
+  // これにより、小さな動きでも反応するようになります
+  if (abs(distance) < 0.005) distance = 0;
 
-  // バネの力：少し弱くして、急激な動きを抑制
-  let force = distance * 0.06; 
+  // バネの力：少し強くして反応を良くする
+  let force = distance * 0.15; 
   batVelocity += force;
 
-  // 摩擦：少し強くして、止まりやすくする
-  batVelocity *= 0.90; 
+  // 摩擦
+  batVelocity *= 0.85; 
 
   batCurrentProgress += batVelocity;
   let progress = constrain(batCurrentProgress, -0.1, 1.1);
@@ -642,4 +656,3 @@ class Ball {
 </script>
 </body>
 </html>
-
