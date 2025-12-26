@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Full Physics</title>
+  <title>Thumb Baseball - Stable</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -70,12 +70,12 @@
         3. <strong>親指を開いて</strong>タップ（スイング）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small><strong>テクニカルモード</strong><br>・タイミングで左右に打ち分け可能<br>・芯で捉えるとホームラン！</small>
+        <small><strong>改善点</strong><br>・手ブレ補正を強化（ビタ止まりします）<br>・ガイド枠の意味を表示</small>
       </div>
     </div>
 
     <div id="right-panel">
-      <h1>Thumb Baseball<br><span style="font-size:0.6em">Pro Edition</span></h1>
+      <h1>Thumb Baseball<br><span style="font-size:0.6em">Stable Edition</span></h1>
       <div id="btn-group" class="btn-container">
         <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ ✋</button>
         <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ ✋</button>
@@ -104,8 +104,8 @@ let smoothedAngle = 0;
 let fixedWristPosition = null; 
 
 // --- 物理演算用変数 ---
-let batCurrentProgress = 0; // バットの現在位置 (0.0 - 1.0)
-let batVelocity = 0;        // バットの速度
+let batCurrentProgress = 0; 
+let batVelocity = 0;        
 // --------------------
 
 let balls = [];
@@ -266,8 +266,9 @@ function onResults(results) {
     
     if (smoothedAngle === 0) smoothedAngle = rawAngle;
     
-    // AIのジッター（震え）を軽減するためのフィルタ
-    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.4); 
+    // 【修正点】スムージングを強化
+    // 0.4(敏感) → 0.15(かなり滑らか)に変更してプルプルを防止
+    smoothedAngle = lerp(smoothedAngle, rawAngle, 0.15); 
   } else {
     handDetected = false;
   }
@@ -304,7 +305,6 @@ function resetGame() {
   gameState = 1; balls = []; score = 0; level = 1; lives = maxLives; combo = 0;
   fixedWristPosition = null; initPanels();
   angleClosed = 0; angleOpen = 0; smoothedAngle = 0;
-  // 物理変数のリセット
   batCurrentProgress = 0;
   batVelocity = 0;
 }
@@ -388,8 +388,17 @@ function drawAlwaysGuide() {
   } else {
     stroke(255, 0, 0); noFill();
   }
+  
+  // ガイド枠の描画
   strokeWeight(4); ellipse(centerX, centerY, 120, 120); 
   strokeWeight(2); rect(centerX - 175, centerY - 250, 350, 350, 20);
+
+  // ガイドの意味をテキストで表示
+  if (gameState === 3) {
+      noStroke(); fill(255, 255, 255, 100); textSize(16); textAlign(CENTER);
+      text("ここに手首を固定", centerX, centerY + 80);
+      text("ボールが来ます", centerX, centerY - 260);
+  }
 }
 
 function drawSetupUI() {
@@ -424,37 +433,33 @@ function drawGameOverScreen() {
   textSize(24); text("画面タップでリトライ", width/2, height/2 + 100);
 }
 
-// ★★★ バット物理演算ロジック ★★★
 function playGame() {
-  // 1. 指の角度から「目標地点(Target)」を算出
   let rawTarget = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
   let target = constrain(rawTarget, 0, 1);
 
-  // 2. 物理挙動の計算（バネとダンパー）
+  // 物理挙動の計算
   let distance = target - batCurrentProgress;
   
-  // バネの力：距離に応じて加速
-  let force = distance * 0.08;
+  // 【修正点】デッドゾーン（不感帯）
+  // 距離が非常に小さい(0.02未満)場合は、力を0にして揺れを完全に止める
+  if (abs(distance) < 0.02) distance = 0;
+
+  // バネの力：少し弱くして、急激な動きを抑制
+  let force = distance * 0.06; 
   batVelocity += force;
 
-  // 摩擦（減衰）：速度を徐々に落とす
-  batVelocity *= 0.92;
+  // 摩擦：少し強くして、止まりやすくする
+  batVelocity *= 0.90; 
 
-  // 位置の更新
   batCurrentProgress += batVelocity;
-
-  // 3. 値の描画への反映
   let progress = constrain(batCurrentProgress, -0.1, 1.1);
 
-  // バットの位置計算
   let batX = map(progress, 0, 1, batOuterX, batInnerX);
   
-  // 角度計算
   let rotateAngle;
   if (isRightHand) rotateAngle = map(progress, 0, 1, PI/4, -PI/4); 
   else rotateAngle = map(progress, 0, 1, -PI/4, PI/4);
   
-  // バットのアクティブ判定
   let isBatActive = (progress > 0.05); 
   let batY = guidePositionY - 80;
   
@@ -463,7 +468,6 @@ function playGame() {
   rotate(rotateAngle);
   
   if (isBatActive) { 
-    // スイングスピードが速いときは色を変える
     let speed = abs(batVelocity);
     if (speed > 0.03) fill(255, 0, 0); 
     else if (progress > 0.8) fill(255, 100, 100); 
@@ -490,7 +494,6 @@ function playGame() {
     let inZone = (distToGuide < 200); 
     let hitThreshold = 350; 
     
-    // ヒット判定
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
       playHitSound(); 
       b.hit(progress); 
@@ -560,7 +563,6 @@ function drawGameUI(progress) {
 
 function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
-// --- ★修正版 Ballクラス（打球方向制御機能付き） ---
 class Ball {
   constructor(currentLevel) {
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
@@ -568,11 +570,9 @@ class Ball {
     this.x = this.startX; 
     this.y = this.startY; 
 
-    // レベルに応じたボールの初速
     let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
     let speed = random(baseSpeed, baseSpeed + 2); 
     
-    // ホームベース（ガイド枠）に向かって投げる
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
     let targetY = guidePositionY - 80; 
@@ -592,11 +592,9 @@ class Ball {
   update() { 
     this.x += this.vx; 
     this.y += this.vy; 
-    
-    // 重力（打球のみ）
     if (this.isHit) {
-      this.vy += 0.5; // ボールが放物線を描くように重力をかける
-      this.radius = lerp(this.radius, 10, 0.05); // 遠くに行くにつれて小さく見せる（遠近法）
+      this.vy += 0.5; 
+      this.radius = lerp(this.radius, 10, 0.05); 
     }
   }
 
@@ -611,41 +609,28 @@ class Ball {
     this.isHit = true; 
     this.ballColor = color(255, 255, 0);
 
-    // --- 1. 左右の打ち分けロジック (タイミング＝方向) ---
-    // progressが小さい(振り始め) = 遅れ = 流し打ち
-    // progressが大きい(振り切り) = 早い = 引っ張り
-    
     let wideScreen = width * 1.5; 
     let leftEdge = -width * 0.25;
     let rightEdge = width * 1.25;
 
     let targetX;
     if (isRightHand) {
-      // 右打者：早い(0.9)→レフト(左)、遅い(0.3)→ライト(右)
       targetX = map(progress, 0.3, 0.8, rightEdge, leftEdge);
     } else {
-      // 左打者：早い(0.9)→ライト(右)、遅い(0.3)→レフト(左)
       targetX = map(progress, 0.3, 0.8, leftEdge, rightEdge);
     }
 
-    // --- 2. 高さのロジック (スイートスポット) ---
-    // 0.55付近で捉えると「芯」。遠くへ飛ぶ。ズレるとゴロ。
     let sweetSpot = 0.55;
-    let impactQuality = 1.0 - abs(progress - sweetSpot) * 2.0; // 1.0が最高、ズレると下がる
-    impactQuality = constrain(impactQuality, 0.2, 1.0); // 最低保証
+    let impactQuality = 1.0 - abs(progress - sweetSpot) * 2.0; 
+    impactQuality = constrain(impactQuality, 0.2, 1.0); 
 
-    // ターゲットのY座標（高さ）
-    // 芯なら画面上部（パネル方向）、外すと画面下部（ゴロ）
-    let panelTop = panels[0].y - 100; // ホームラン
-    let ground = height + 100;        // ゴロ
+    let panelTop = panels[0].y - 100; 
+    let ground = height + 100;        
     
     let targetY = map(impactQuality, 0.2, 1.0, ground, panelTop);
 
-    // --- 3. 打球速度の計算 ---
-    // 芯に近いほど速い
     let flySpeed = 25 * impactQuality + 10; 
 
-    // ベクトル計算
     let dx = targetX - this.x; 
     let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
@@ -657,3 +642,4 @@ class Ball {
 </script>
 </body>
 </html>
+
