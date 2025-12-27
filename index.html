@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Fixed Start</title>
+  <title>Thumb Baseball - Movement Fix</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -70,12 +70,12 @@
         3. <strong>親指を開いて</strong>タップ（スイング）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small><strong>機能修復版</strong><br>人差し指の付け根固定＋手首センサー</small>
+        <small><strong>緊急修正</strong><br>バットが動かない問題を修正しました。<br>設定時の動きが小さくても動きます。</small>
       </div>
     </div>
 
     <div id="right-panel">
-      <h1>Thumb Baseball<br><span style="font-size:0.6em">Rebooted</span></h1>
+      <h1>Thumb Baseball<br><span style="font-size:0.6em">Movement Fix</span></h1>
       <div id="btn-group" class="btn-container">
         <button id="btnRight" class="hand-btn" onclick="handleClick('right')">右手でプレイ ✋</button>
         <button id="btnLeft" class="hand-btn" onclick="handleClick('left')">左手でプレイ ✋</button>
@@ -85,7 +85,6 @@
   </div>
 
 <script>
-// エラーハンドリング（画面にエラーを表示）
 window.onerror = function(msg, url, line) {
   const el = document.getElementById('statusLog');
   if(el) { el.innerHTML = "⚠️ Error:<br>" + msg; el.style.color = "#ff5555"; }
@@ -96,7 +95,7 @@ let rawVideo = document.getElementById('rawVideo');
 let hands = null;
 let camera = null;
 
-// 手の座標変数（初期化を確実に）
+// 手の座標変数
 let thumbTip = null;
 let indexBase = null;
 let wrist = null;
@@ -108,7 +107,7 @@ let isRightHand = true;
 let gameState = 1; 
 let angleClosed = 0, angleOpen = 0;
 let smoothedAngle = 0; 
-let fixedAnchorPosition = null; // 人差し指の付け根の固定座標
+let fixedAnchorPosition = null; 
 
 // 物理演算用変数
 let batCurrentProgress = 0; 
@@ -145,8 +144,6 @@ function setup() {
     (err) => { console.log("背景画像なし（標準背景を使用）"); }
   );
 
-  // 初期レイアウト計算
-  // setup内で確実に初期値を設定しておく
   isRightHand = true; 
   updateLayout();
   initPanels();
@@ -155,7 +152,6 @@ function setup() {
 }
 
 function draw() {
-  // 背景描画
   if (bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
     let canvasAspect = width / height;
@@ -171,7 +167,6 @@ function draw() {
 
   if (!isGameStarted) return;
 
-  // カメラ映像の描画
   if (rawVideo && rawVideo.readyState >= 2) {
     push();
     translate(width, 0); scale(-1, 1); tint(255, 80); 
@@ -179,16 +174,10 @@ function draw() {
     pop();
   }
 
-  // 手の描画（骨格確認用）
-  // 変数がnullでないことを厳密にチェック
   if (handDetected && indexBase && thumbTip && wrist) {
     stroke(255, 0, 0); strokeWeight(3); 
-    // 人差し指の付け根〜手首
     line(indexBase.x, indexBase.y, wrist.x, wrist.y);
-    // 手首〜親指
     line(wrist.x, wrist.y, thumbTip.x, thumbTip.y);
-    
-    // 固定点（人差し指付け根）を目立たせる
     fill(0,255,255); noStroke(); circle(indexBase.x, indexBase.y, 15);
   }
 
@@ -207,15 +196,12 @@ function draw() {
   }
 }
 
-// ボタンクリック時の処理（ここが動かない原因だった可能性あり）
 function handleClick(hand) {
-  // ボタンを隠す
   const btnGroup = document.getElementById('btn-group');
   if(btnGroup) btnGroup.style.display = 'none';
   
   log("カメラを起動中...");
   
-  // 少し待ってから重い処理を開始（UIの描画更新を待つため）
   setTimeout(() => { 
     startSequence(hand); 
   }, 100);
@@ -223,18 +209,13 @@ function handleClick(hand) {
 
 async function startSequence(hand) {
   isRightHand = (hand === 'right');
-  
-  // AudioContextの開始（ユーザー操作が必要なためここで）
   try {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
     if(AudioContext) { 
         audioCtx = new AudioContext(); 
         audioCtx.resume(); 
     }
-  } catch(e) {
-    console.log("Audio init failed: " + e);
-  }
-
+  } catch(e) {}
   updateLayout();
   initPanels();
   startCamera();
@@ -254,7 +235,6 @@ function startCamera() {
   navigator.mediaDevices.getUserMedia(constraints)
     .then(stream => {
       rawVideo.srcObject = stream;
-      // メタデータ読み込み完了時に再生開始
       rawVideo.onloadedmetadata = () => {
         rawVideo.play();
         log("AIモデルを読み込んでいます...");
@@ -263,7 +243,6 @@ function startCamera() {
     })
     .catch(err => {
       alert("カメラエラー: " + err.message);
-      // ボタンを再表示
       const btnGroup = document.getElementById('btn-group');
       if(btnGroup) btnGroup.style.display = 'flex';
     });
@@ -309,21 +288,16 @@ function onResults(results) {
     handDetected = true;
     const lm = results.multiHandLandmarks[0];
     
-    // 座標計算（p5のベクトルを使用）
-    // 安全のため、width/heightが存在するか確認（p5 setup後なら確実）
     if (typeof width !== 'undefined') {
         thumbTip = createVector((1 - lm[4].x) * width, lm[4].y * height);
         indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
         wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
         
-        // 角度計算：手首(wrist)を中心に、人差し指付け根(indexBase)と親指先(thumbTip)の角度を測る
         let v1 = p5.Vector.sub(indexBase, wrist);
         let v2 = p5.Vector.sub(thumbTip, wrist);
         let rawAngle = v1.angleBetween(v2);
         
         if (smoothedAngle === 0) smoothedAngle = rawAngle;
-        
-        // スムージング処理
         smoothedAngle = lerp(smoothedAngle, rawAngle, 0.25); 
     }
   } else {
@@ -339,7 +313,12 @@ function handleInput() {
         gameState = 2; 
     } else if (gameState === 2) { 
         angleOpen = smoothedAngle;
-        // 固定位置として「人差し指の付け根」を保存
+        
+        // ★修正点: 設定時の差が小さすぎるとゼロ除算で動かなくなるため、強制的に差をつける
+        if (abs(angleOpen - angleClosed) < 0.1) {
+             angleOpen = angleClosed + 0.5; // 強制的に可動域を広げる
+        }
+
         if(indexBase) {
             fixedAnchorPosition = createVector(indexBase.x, indexBase.y);
             gameState = 3; 
@@ -439,7 +418,6 @@ function drawPanels() {
 
 function drawAlwaysGuide() {
   noFill(); 
-  // 固定位置が決まっていればそこを中心に、そうでなければガイド位置を使用
   let centerX = fixedAnchorPosition ? fixedAnchorPosition.x : guidePositionX;
   let centerY = fixedAnchorPosition ? fixedAnchorPosition.y : guidePositionY;
   
@@ -493,21 +471,24 @@ function drawGameOverScreen() {
 }
 
 function playGame() {
-  // アンカーチェック（人差し指が動いていないか）
   if (fixedAnchorPosition && indexBase) {
     let d = dist(fixedAnchorPosition.x, fixedAnchorPosition.y, indexBase.x, indexBase.y);
-    // 許容範囲
     if (d > 150) {
       gameState = 4; // Error
     }
   }
 
-  let rawTarget = map(smoothedAngle, angleClosed, angleOpen, 0, 1);
+  // ★修正: map関数でゼロ除算が発生しないようにする
+  // angleClosed と angleOpen が同じだとバグるので、handleInputで対策済みだが、念のためここでも確認
+  let safeAngleOpen = angleOpen;
+  if (abs(safeAngleOpen - angleClosed) < 0.001) safeAngleOpen = angleClosed + 0.1;
+
+  let rawTarget = map(smoothedAngle, angleClosed, safeAngleOpen, 0, 1);
   let target = constrain(rawTarget, 0, 1);
   
-  // デバッグ用表示
-  fill(255); textSize(12); textAlign(LEFT, TOP); noStroke();
-  text(`Input: ${nf(target, 1, 2)}`, 10, 10);
+  // デバッグ用表示：これが動いているか確認してください
+  fill(255); textSize(16); textAlign(LEFT, TOP); noStroke();
+  text(`Input: ${nf(target, 1, 2)}`, 20, 20);
 
   // 物理挙動
   let distance = target - batCurrentProgress;
@@ -517,6 +498,10 @@ function playGame() {
   let force = distance * 0.15; 
   batVelocity += force;
   batVelocity *= 0.85; 
+
+  // ★修正: NaN（計算不能）になったらリセットする安全装置
+  if (isNaN(batVelocity)) batVelocity = 0;
+  if (isNaN(batCurrentProgress)) batCurrentProgress = 0;
 
   batCurrentProgress += batVelocity;
   let progress = constrain(batCurrentProgress, -0.1, 1.1);
@@ -555,157 +540,4 @@ function playGame() {
   if (balls.length === 0 && frameCount % 60 === 0) balls.push(new Ball(level));
 
   for (let i = balls.length - 1; i >= 0; i--) {
-    let b = balls[i]; b.update(); b.display();
-    
-    let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    let inZone = (distToGuide < 200); 
-    let hitThreshold = 350; 
-    
-    if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
-      playHitSound(); 
-      b.hit(progress); 
-    }
-
-    if (b.isHit) {
-      for (let p of panels) {
-        if (p.active && b.x > p.x && b.x < p.x + p.w && b.y > p.y && b.y < p.y + p.h) {
-          p.active = false; score++; combo++;
-          if (combo > 40) showMessage("GODLIKE!!", color(255, 0, 0));
-          else if (combo > 30) showMessage("LEGENDARY!", color(255, 0, 255));
-          else if (combo > 20) showMessage("UNSTOPPABLE!", color(255, 100, 0));
-          else if (combo > 10) showMessage("GREAT!", color(255, 255, 0));
-          else showMessage("NICE HIT!", color(255, 255, 0));
-          checkLevelUp(); balls.splice(i, 1); break;
-        }
-      }
-    }
-
-    if (b.y > height + 100 || b.y < -300 || b.x < -200 || b.x > width + 200) {
-      if (!b.isHit) {
-        lives--; combo = 0; showMessage("MISS...", color(100, 100, 255));
-        if (lives <= 0) gameState = 5;
-      }
-      balls.splice(i, 1);
-    }
-  }
-  drawGameUI(progress);
-}
-
-function checkLevelUp() {
-  if (score > 0 && score % 10 === 0) { level++; showMessage(`LEVEL UP! Lv.${level}`, color(0, 255, 0)); }
-}
-
-function playHitSound() {
-  if (audioCtx && audioCtx.state === 'running') {
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(600, audioCtx.currentTime);
-    osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.1);
-    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
-    osc.start();
-    osc.stop(audioCtx.currentTime + 0.1);
-  }
-}
-
-function drawGameUI(progress) {
-  fill(255); stroke(0); strokeWeight(4);
-  textAlign(RIGHT, TOP); textSize(32); 
-  text(`SCORE: ${score}`, width - 20, 20); text(`Lv.${level}`, width - 20, 60);
-
-  if (combo > 1) { fill(255, 200, 0); textSize(40); text(`${combo} COMBO!`, width - 20, 110); }
-
-  textAlign(LEFT, TOP); fill(255, 50, 50); textSize(32);
-  let hearts = "❤️".repeat(lives); let empty = "🤍".repeat(maxLives - lives);
-  text(`Life: ${hearts}${empty}`, 20, 20);
-
-  if (messageTimer > 0) {
-    textAlign(CENTER); fill(messageColor); stroke(0); strokeWeight(4);
-    textSize(60); text(message, width/2, height/3); messageTimer--;
-  }
-}
-
-function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
-
-class Ball {
-  constructor(currentLevel) {
-    this.startX = isRightHand ? width * 0.1 : width * 0.9;
-    this.startY = height * 0.6; 
-    this.x = this.startX; 
-    this.y = this.startY; 
-
-    let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
-    let speed = random(baseSpeed, baseSpeed + 2); 
-    
-    let homeBaseCenterX = guidePositionX;
-    let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
-    let targetY = guidePositionY - 80; 
-    
-    let dirX = targetX - this.startX; 
-    let dirY = targetY - this.startY;
-    let distLen = sqrt(dirX*dirX + dirY*dirY);
-    
-    this.vx = (dirX / distLen) * speed; 
-    this.vy = (dirY / distLen) * speed;
-    
-    this.isHit = false; 
-    this.ballColor = color(255);
-    this.radius = 15;
-  }
-
-  update() { 
-    this.x += this.vx; 
-    this.y += this.vy; 
-    if (this.isHit) {
-      this.vy += 0.5; 
-      this.radius = lerp(this.radius, 10, 0.05); 
-    }
-  }
-
-  display() { 
-    fill(this.ballColor); 
-    stroke(0); 
-    strokeWeight(1); 
-    ellipse(this.x, this.y, this.radius * 2); 
-  }
-
-  hit(progress) {
-    this.isHit = true; 
-    this.ballColor = color(255, 255, 0);
-
-    let wideScreen = width * 1.5; 
-    let leftEdge = -width * 0.25;
-    let rightEdge = width * 1.25;
-
-    let targetX;
-    if (isRightHand) {
-      targetX = map(progress, 0.3, 0.8, rightEdge, leftEdge);
-    } else {
-      targetX = map(progress, 0.3, 0.8, leftEdge, rightEdge);
-    }
-
-    let sweetSpot = 0.55;
-    let impactQuality = 1.0 - abs(progress - sweetSpot) * 2.0; 
-    impactQuality = constrain(impactQuality, 0.2, 1.0); 
-
-    let panelTop = panels[0].y - 100; 
-    let ground = height + 100;        
-    
-    let targetY = map(impactQuality, 0.2, 1.0, ground, panelTop);
-
-    let flySpeed = 25 * impactQuality + 10; 
-
-    let dx = targetX - this.x; 
-    let dy = targetY - this.y;
-    let distLen = sqrt(dx*dx + dy*dy);
-    
-    this.vx = (dx / distLen) * flySpeed; 
-    this.vy = (dy / distLen) * flySpeed;
-  }
-}
-</script>
-</body>
-</html>
+    let b = balls[i]; b
