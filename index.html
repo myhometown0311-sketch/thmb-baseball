@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Distance Logic</title>
+  <title>Thumb Baseball - Easy Hit</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -69,12 +69,12 @@
         3. <strong>親指を開いて</strong>タップ（スイング）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small><strong>確実な動作版</strong><br>親指と人差し指の「距離」で動きます。<br>確実に反応します。</small>
+        <small><strong>打球修正版</strong><br>当たればパネル方向に飛びます！</small>
       </div>
     </div>
 
     <div id="right-panel">
-      <h1>Thumb Baseball<br><span style="font-size:0.6em">Distance Logic</span></h1>
+      <h1>Thumb Baseball<br><span style="font-size:0.6em">Arcade Mode</span></h1>
       <div id="btn-group" class="btn-container">
         <button id="btnRight" class="hand-btn" onclick="startGameClick('right')">右手でプレイ ✋</button>
         <button id="btnLeft" class="hand-btn" onclick="startGameClick('left')">左手でプレイ ✋</button>
@@ -95,7 +95,6 @@ let isGameStarted = false;
 let isRightHand = true; 
 
 let gameState = 1; 
-// 角度ではなく「距離」を使用
 let distClosed = 0, distOpen = 0;
 let smoothedDist = 0; 
 let fixedAnchorPosition = null; 
@@ -120,7 +119,6 @@ let batOuterX, batInnerX;
 let guidePositionX, guidePositionY;
 let panelStartX;
 
-// エラー表示
 window.onerror = function(msg, url, line) {
   const el = document.getElementById('statusLog');
   if(el) { el.innerHTML = "⚠️ Error: " + msg; el.style.color = "#ff5555"; }
@@ -131,7 +129,6 @@ function log(msg) {
   if(el) el.innerHTML = msg;
 }
 
-// --- Setup ---
 function setup() {
   pixelDensity(1);
   let cnv = createCanvas(windowWidth, windowHeight);
@@ -232,19 +229,16 @@ function onResults(results) {
         indexBase = createVector((1 - lm[5].x) * width, lm[5].y * height);
         wrist = createVector((1 - lm[0].x) * width, lm[0].y * height);
         
-        // ★修正点：角度ではなく「距離」を使う
-        // 親指の先(4) と 人差し指の付け根(5) の距離
         let rawDist = dist(thumbTip.x, thumbTip.y, indexBase.x, indexBase.y);
         
         if (smoothedDist === 0) smoothedDist = rawDist;
-        smoothedDist = lerp(smoothedDist, rawDist, 0.3); // 反応速度
+        smoothedDist = lerp(smoothedDist, rawDist, 0.3); 
     }
   } else {
     handDetected = false;
   }
 }
 
-// --- Main Loop ---
 function draw() {
   if (bgImage) {
     let imgAspect = bgImage.width / bgImage.height;
@@ -268,16 +262,10 @@ function draw() {
     pop();
   }
 
-  // 骨格描画（デバッグ用）
   if (handDetected && indexBase && thumbTip && wrist) {
     stroke(255, 0, 0); strokeWeight(3); 
-    // 親指〜人差し指の距離を可視化（これがバットの動きになる）
     line(indexBase.x, indexBase.y, thumbTip.x, thumbTip.y);
     fill(0,255,255); noStroke(); circle(indexBase.x, indexBase.y, 15);
-    
-    // 現在の距離値を表示（バットが動かない原因調査用）
-    fill(255); textSize(14);
-    text(Math.floor(smoothedDist), thumbTip.x, thumbTip.y - 20);
   }
 
   handleInput();
@@ -303,12 +291,9 @@ function handleInput() {
         gameState = 2; 
     } else if (gameState === 2) { 
         distOpen = smoothedDist;
-        
-        // ★自動補正：もし変化が少なすぎたら、強制的に可動域を設定する
         if (abs(distOpen - distClosed) < 10) {
-            distOpen = distClosed + 100; // ピクセル単位で強制追加
+            distOpen = distClosed + 100; 
         }
-
         if(indexBase) {
             fixedAnchorPosition = createVector(indexBase.x, indexBase.y);
             gameState = 3; 
@@ -466,21 +451,16 @@ function playGame() {
     if (d > 150) gameState = 4; // Error
   }
 
-  // ★修正：距離に基づいて進捗(0~1)を計算
-  // ゼロ除算防止は handleInput で対策済みだが念のため
   let safeDistOpen = distOpen;
   if (abs(safeDistOpen - distClosed) < 1) safeDistOpen = distClosed + 100;
 
   let rawTarget = map(smoothedDist, distClosed, safeDistOpen, 0, 1);
   let target = constrain(rawTarget, 0, 1);
   
-  // デバッグ用表示
   fill(255); textSize(12); textAlign(LEFT, TOP); noStroke();
   text(`Input: ${nf(target, 1, 2)}`, 10, 10);
 
-  // 物理挙動
   let distance = target - batCurrentProgress;
-  
   if (abs(distance) < 0.001) distance = 0;
 
   let force = distance * 0.15; 
@@ -644,36 +624,40 @@ class Ball {
     ellipse(this.x, this.y, this.radius * 2); 
   }
 
+  // ★修正：打球方向のロジックを簡略化・安定化
   hit(progress) {
     this.isHit = true; 
     this.ballColor = color(255, 255, 0);
 
-    let wideScreen = width * 1.5; 
-    let leftEdge = -width * 0.25;
-    let rightEdge = width * 1.25;
-
+    // 左右の打ち分け（画面内に収める）
+    let leftLimit = 0;
+    let rightLimit = width;
     let targetX;
-    if (isRightHand) {
-      targetX = map(progress, 0.3, 0.8, rightEdge, leftEdge);
-    } else {
-      targetX = map(progress, 0.3, 0.8, leftEdge, rightEdge);
-    }
-
-    let sweetSpot = 0.55;
-    let impactQuality = 1.0 - abs(progress - sweetSpot) * 2.0; 
-    impactQuality = constrain(impactQuality, 0.2, 1.0); 
-
-    let panelTop = panels[0].y - 100; 
-    let ground = height + 100;        
     
-    let targetY = map(impactQuality, 0.2, 1.0, ground, panelTop);
-
-    let flySpeed = 25 * impactQuality + 10; 
+    if (isRightHand) {
+      // 右打者: 遅い(0.2)→右, 早い(0.8)→左
+      targetX = map(progress, 0.2, 0.8, rightLimit, leftLimit);
+    } else {
+      // 左打者: 遅い(0.2)→左, 早い(0.8)→右
+      targetX = map(progress, 0.2, 0.8, leftLimit, rightLimit);
+    }
+    
+    // Y方向：必ず上（パネル方向）へ飛ばす
+    let panelTop = panels[0].y;
+    let panelBottom = panels[8].y + panels[8].h;
+    
+    // 基本的にパネルエリアの中心高さを狙う
+    let targetY = (panelTop + panelBottom) / 2;
+    
+    // 少しだけランダム性を入れる（ゲーム性）
+    targetY += random(-100, 100);
 
     let dx = targetX - this.x; 
     let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
     
+    // 速度は一定で速く
+    let flySpeed = 30; 
     this.vx = (dx / distLen) * flySpeed; 
     this.vy = (dy / distLen) * flySpeed;
   }
