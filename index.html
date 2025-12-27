@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>Thumb Baseball - Easy Hit</title>
+  <title>Thumb Baseball - Adjusted</title>
   <style>
     body { margin: 0; padding: 0; overflow: hidden; background-color: #222; font-family: sans-serif; touch-action: manipulation; }
     
@@ -63,18 +63,18 @@
   <div id="overlay">
     <div id="left-panel">
       <div id="instruction">
-        <strong>【設定手順】</strong><br>
+        <strong>【遊び方】</strong><br>
         1. プレイする手を選んでください。<br>
         2. <strong>親指を閉じて</strong>タップ（構え）。<br>
         3. <strong>親指を開いて</strong>タップ（スイング）。<br>
         ➜ <strong>ゲームスタート！</strong><br>
         <hr style="border:0; border-top:1px solid #555; margin:10px 0;">
-        <small><strong>打球修正版</strong><br>当たればパネル方向に飛びます！</small>
+        <small><strong>コツ</strong><br>ボールを引きつけて、素早く親指を開くと強い打球がパネル方向に飛びます！</small>
       </div>
     </div>
 
     <div id="right-panel">
-      <h1>Thumb Baseball<br><span style="font-size:0.6em">Arcade Mode</span></h1>
+      <h1>Thumb Baseball<br><span style="font-size:0.6em">Fixed Version</span></h1>
       <div id="btn-group" class="btn-container">
         <button id="btnRight" class="hand-btn" onclick="startGameClick('right')">右手でプレイ ✋</button>
         <button id="btnLeft" class="hand-btn" onclick="startGameClick('left')">左手でプレイ ✋</button>
@@ -99,7 +99,7 @@ let distClosed = 0, distOpen = 0;
 let smoothedDist = 0; 
 let fixedAnchorPosition = null; 
 
-// 物理演算
+// 物理演算用変数
 let batCurrentProgress = 0; 
 let batVelocity = 0;        
 
@@ -232,7 +232,7 @@ function onResults(results) {
         let rawDist = dist(thumbTip.x, thumbTip.y, indexBase.x, indexBase.y);
         
         if (smoothedDist === 0) smoothedDist = rawDist;
-        smoothedDist = lerp(smoothedDist, rawDist, 0.3); 
+        smoothedDist = lerp(smoothedDist, rawDist, 0.4); 
     }
   } else {
     handDetected = false;
@@ -262,6 +262,7 @@ function draw() {
     pop();
   }
 
+  // 骨格表示
   if (handDetected && indexBase && thumbTip && wrist) {
     stroke(255, 0, 0); strokeWeight(3); 
     line(indexBase.x, indexBase.y, thumbTip.x, thumbTip.y);
@@ -292,7 +293,7 @@ function handleInput() {
     } else if (gameState === 2) { 
         distOpen = smoothedDist;
         if (abs(distOpen - distClosed) < 10) {
-            distOpen = distClosed + 100; 
+            distOpen = distClosed + 100;
         }
         if(indexBase) {
             fixedAnchorPosition = createVector(indexBase.x, indexBase.y);
@@ -351,6 +352,7 @@ function initPanels() {
   let panelGap = 15 + (1 - shrinkRate) * 20;
   let levelLift = (level - 1) * (height * 0.05);
   
+  // パネル位置の調整（打者の反対側へ配置）
   if (isRightHand) { panelStartX = width * 0.02; } 
   else { 
     let totalPanelW = cols * panelW + (cols - 1) * panelGap;
@@ -454,25 +456,19 @@ function playGame() {
   let safeDistOpen = distOpen;
   if (abs(safeDistOpen - distClosed) < 1) safeDistOpen = distClosed + 100;
 
+  // 入力をダイレクトに反映
   let rawTarget = map(smoothedDist, distClosed, safeDistOpen, 0, 1);
   let target = constrain(rawTarget, 0, 1);
   
-  fill(255); textSize(12); textAlign(LEFT, TOP); noStroke();
-  text(`Input: ${nf(target, 1, 2)}`, 10, 10);
+  // デバッグ表示
+  fill(255); textSize(16); textAlign(LEFT, TOP); noStroke();
+  text(`Dist: ${Math.floor(smoothedDist)}`, 20, 20);
+  text(`Range: ${Math.floor(distClosed)} ~ ${Math.floor(safeDistOpen)}`, 20, 40);
+  text(`Bat: ${nf(target, 1, 2)}`, 20, 60);
 
-  let distance = target - batCurrentProgress;
-  if (abs(distance) < 0.001) distance = 0;
-
-  let force = distance * 0.15; 
-  batVelocity += force;
-  batVelocity *= 0.85; 
-
-  if (isNaN(batVelocity)) batVelocity = 0;
-  if (isNaN(batCurrentProgress)) batCurrentProgress = 0;
-
-  batCurrentProgress += batVelocity;
+  batCurrentProgress = target; 
+  
   let progress = constrain(batCurrentProgress, -0.1, 1.1);
-
   let batX = map(progress, 0, 1, batOuterX, batInnerX);
   
   let rotateAngle;
@@ -487,9 +483,7 @@ function playGame() {
   rotate(rotateAngle);
   
   if (isBatActive) { 
-    let speed = abs(batVelocity);
-    if (speed > 0.03) fill(255, 0, 0); 
-    else if (progress > 0.8) fill(255, 100, 100); 
+    if (progress > 0.8) fill(255, 100, 100); 
     else fill(255, 255, 0); 
     stroke(0); 
   } else { 
@@ -509,8 +503,9 @@ function playGame() {
   for (let i = balls.length - 1; i >= 0; i--) {
     let b = balls[i]; b.update(); b.display();
     
+    // バットの当たり判定
     let distToGuide = dist(b.x, b.y, guidePositionX, guidePositionY);
-    let inZone = (distToGuide < 200); 
+    let inZone = (distToGuide < 250); // 少し判定を緩和
     let hitThreshold = 350; 
     
     if (isBatActive && !b.isHit && inZone && dist(b.x, b.y, batX, batY) < hitThreshold) {
@@ -582,6 +577,7 @@ function drawGameUI(progress) {
 
 function showMessage(t, c) { message = t; messageColor = c; messageTimer = 60; }
 
+// --- Ball クラス (修正済み) ---
 class Ball {
   constructor(currentLevel) {
     this.startX = isRightHand ? width * 0.1 : width * 0.9;
@@ -589,8 +585,11 @@ class Ball {
     this.x = this.startX; 
     this.y = this.startY; 
 
-    let baseSpeed = 6 + (currentLevel - 1) * 1.5; 
-    let speed = random(baseSpeed, baseSpeed + 2); 
+    // レベルによる速度上昇の上限を設定（遊びやすく調整）
+    let maxSpeed = 12;
+    let baseSpeed = 6 + (currentLevel - 1) * 1.0; 
+    baseSpeed = min(baseSpeed, maxSpeed);
+    let speed = random(baseSpeed, baseSpeed + 1); 
     
     let homeBaseCenterX = guidePositionX;
     let targetX = random(homeBaseCenterX - 50, homeBaseCenterX + 50);
@@ -608,56 +607,50 @@ class Ball {
     this.radius = 15;
   }
 
+  display() {
+    fill(this.ballColor); stroke(0); strokeWeight(2);
+    circle(this.x, this.y, this.radius * 2);
+  }
+
   update() { 
     this.x += this.vx; 
     this.y += this.vy; 
     if (this.isHit) {
-      this.vy += 0.5; 
+      this.vy += 0.3; // 重力を少し軽くして飛距離を伸ばす
       this.radius = lerp(this.radius, 10, 0.05); 
     }
   }
 
-  display() { 
-    fill(this.ballColor); 
-    stroke(0); 
-    strokeWeight(1); 
-    ellipse(this.x, this.y, this.radius * 2); 
-  }
-
-  // ★修正：打球方向のロジックを簡略化・安定化
   hit(progress) {
     this.isHit = true; 
     this.ballColor = color(255, 255, 0);
 
-    // 左右の打ち分け（画面内に収める）
     let leftLimit = 0;
     let rightLimit = width;
     let targetX;
     
+    // 【修正箇所】打球方向のロジックを反転
+    // 右手: 小さいprogress(早振り) -> leftLimit(左=パネル側)
     if (isRightHand) {
-      // 右打者: 遅い(0.2)→右, 早い(0.8)→左
-      targetX = map(progress, 0.2, 0.8, rightLimit, leftLimit);
+      targetX = map(progress, 0.2, 0.8, leftLimit, rightLimit); 
     } else {
-      // 左打者: 遅い(0.2)→左, 早い(0.8)→右
-      targetX = map(progress, 0.2, 0.8, leftLimit, rightLimit);
+      targetX = map(progress, 0.2, 0.8, rightLimit, leftLimit);
     }
     
-    // Y方向：必ず上（パネル方向）へ飛ばす
+    // 【調整箇所】ターゲットYの決定ロジック
+    // パネル領域の中央付近を狙いやすくする
     let panelTop = panels[0].y;
     let panelBottom = panels[8].y + panels[8].h;
+    let panelCenterY = (panelTop + panelBottom) / 2;
     
-    // 基本的にパネルエリアの中心高さを狙う
-    let targetY = (panelTop + panelBottom) / 2;
-    
-    // 少しだけランダム性を入れる（ゲーム性）
-    targetY += random(-100, 100);
+    // 基本はパネルセンター狙いだが、少し上下にばらけさせる
+    let targetY = panelCenterY + random(-150, 150);
 
     let dx = targetX - this.x; 
     let dy = targetY - this.y;
     let distLen = sqrt(dx*dx + dy*dy);
     
-    // 速度は一定で速く
-    let flySpeed = 30; 
+    let flySpeed = 25; // 打球速度
     this.vx = (dx / distLen) * flySpeed; 
     this.vy = (dy / distLen) * flySpeed;
   }
