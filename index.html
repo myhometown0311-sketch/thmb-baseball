@@ -2,64 +2,72 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Fix</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Thumb Rehab Universal</title>
 <style>
-  /* --- 基本スタイル --- */
   body {
     margin: 0; padding: 0; overflow: hidden;
-    background-color: #222; font-family: sans-serif;
-    touch-action: none; color: white;
+    background-color: #111; font-family: sans-serif;
+    color: white; touch-action: none;
   }
-
-  /* キャンバス（ゲーム描画用） */
+  
+  /* ゲーム画面（キャンバス） */
   canvas {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 5;
+    z-index: 1;
   }
 
-  /* 修正ポイント：ビデオを「消す」のではなく「透明にして裏に置く」 */
-  /* iPhoneは display:none のビデオを再生しないため */
-  #input_video {
-    position: fixed; top: 0; left: 0; width: 1px; height: 1px;
-    opacity: 0; z-index: -1; pointer-events: none;
+  /* HTMLビデオ要素（裏で動かす用：非表示だが存在させる） */
+  #raw-video {
+    position: absolute; top: 0; left: 0; width: 1px; height: 1px;
+    opacity: 0; pointer-events: none; z-index: -10;
   }
 
-  /* UIレイヤー（最前面） */
+  /* UIレイヤー */
   #ui-layer {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 100;
-    pointer-events: none; 
+    z-index: 100; pointer-events: none;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
 
+  /* パネル */
   .screen {
-    position: absolute; width: 90%; max-width: 400px;
-    background: rgba(0, 0, 0, 0.9);
-    border: 2px solid #555; border-radius: 12px;
-    padding: 20px; text-align: center;
-    pointer-events: auto; 
-    display: none;
+    position: relative; width: 90%; max-width: 450px;
+    background: rgba(20,20,20,0.9);
+    border: 2px solid #666; border-radius: 12px;
+    padding: 25px; text-align: center;
+    pointer-events: auto; display: none;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
   }
   .screen.active { display: block; }
 
-  h1 { color: #ffcc00; margin-bottom: 10px; font-size: 22px; }
-  h2 { color: #4db8ff; margin-bottom: 15px; font-size: 18px; }
-  p { font-size: 14px; color: #ccc; margin-bottom: 20px; }
+  h1 { color: #ffeb3b; margin: 0 0 10px 0; }
+  p { color: #ccc; margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
 
   .btn {
-    display: block; width: 100%; margin: 10px 0; padding: 15px;
-    font-size: 18px; font-weight: bold; color: #000;
-    background: #ffeb3b; border: none; border-radius: 30px; cursor: pointer;
+    width: 100%; padding: 15px; font-size: 18px; font-weight: bold;
+    background: #ffeb3b; border: none; border-radius: 8px;
+    cursor: pointer; margin-top: 10px; color: #000;
   }
-  .btn:active { background: #fbc02d; transform: scale(0.98); }
+  .btn:hover { background: #fdd835; }
 
-  /* デバッグログ（画面下に小さく表示） */
-  #debug-log {
-    position: fixed; bottom: 0; left: 0; width: 100%;
-    background: rgba(0,0,0,0.5); color: lime;
-    font-size: 10px; font-family: monospace;
-    padding: 5px; pointer-events: none; z-index: 200;
+  /* エラー表示エリア（最重要） */
+  #error-box {
+    position: fixed; top: 0; left: 0; width: 100%;
+    background: #d32f2f; color: white; padding: 10px;
+    font-size: 12px; font-family: monospace; z-index: 9999;
+    display: none; text-align: center;
+  }
+  
+  /* HUD */
+  #hud {
+    position: fixed; top: 10px; left: 10px; z-index: 50;
+    font-size: 20px; display: none; text-shadow: 1px 1px 2px black;
+  }
+  #rom-val {
+    position: fixed; top: 10px; right: 10px; z-index: 50;
+    font-size: 16px; background: rgba(0,0,0,0.5); padding: 5px;
+    border: 1px solid cyan; color: cyan; display: none;
   }
 </style>
 
@@ -69,115 +77,144 @@
 </head>
 <body>
 
-<div id="debug-log">System Ready...</div>
+<div id="error-box"></div>
+
+<video id="raw-video" playsinline webkit-playsinline muted></video>
+
+<div id="hud">❤️❤️❤️</div>
+<div id="rom-val">ROM: 0mm</div>
 
 <div id="ui-layer">
+  
   <div id="screen-menu" class="screen active">
     <h1>Thumb Rehab</h1>
-    <p>親指リハビリ・ストラックアウト</p>
-    <button class="btn" onclick="startApp('right')">右手でスタート</button>
-    <button class="btn" onclick="startApp('left')">左手でスタート</button>
-  </div>
-
-  <div id="screen-loading" class="screen">
-    <h2>カメラ起動中...</h2>
-    <p>許可ポップアップが出たら<br>「許可」を押してください。</p>
-    <div style="font-size:12px; color:#aaa;">※画面が黒い場合は再読み込みしてください</div>
+    <p>PC/スマホ対応 親指リハビリ<br>
+    <small>※https接続が必須です</small></p>
+    <button class="btn" onclick="systemCheck('right')">右手で開始</button>
+    <button class="btn" onclick="systemCheck('left')">左手で開始</button>
   </div>
 
   <div id="screen-calib" class="screen">
-    <h2 id="calib-title">測定：閉じる</h2>
-    <p id="calib-desc">親指を閉じて（グー）<br>ボタンを押してください</p>
-    <div style="font-size:30px; margin:15px; color:#4db8ff;" id="calib-val">0 mm</div>
-    <button class="btn" onclick="nextStep()">記録する</button>
+    <h2 id="calib-title" style="color:cyan;">測定：閉じる</h2>
+    <p id="calib-msg">親指を閉じて（グー）<br>ボタンを押してください</p>
+    <div id="calib-display" style="font-size:30px; color:cyan; margin:15px;">0 mm</div>
+    <button class="btn" onclick="nextCalib()">記録する</button>
   </div>
 
   <div id="screen-result" class="screen">
-    <h1 style="color:#ff5555;">終了</h1>
-    <p id="final-score">Score: 0</p>
-    <button class="btn" onclick="location.reload()">もう一度</button>
+    <h1 style="color:#ff5252;">終了</h1>
+    <p id="score-result">Score: 0</p>
+    <button class="btn" onclick="location.reload()">タイトルへ</button>
   </div>
+
 </div>
 
-<div style="position:fixed; top:10px; left:10px; font-size:20px; z-index:50; color:white; display:none;" id="hud-lives">❤️❤️❤️</div>
-
-<video id="input_video" playsinline webkit-playsinline muted autoplay></video>
-
 <script>
-// --- 変数 ---
-let videoElement = document.getElementById('input_video');
+// --- グローバル変数 ---
+const videoElem = document.getElementById('raw-video');
 let hands;
 let isRightHand = true;
-let appState = 0; // 0:Menu, 1:Load, 2:Calib, 3:Game, 4:Result
+let appState = 0; // 0:Menu, 1:Calib, 2:Game, 3:Result
 
+// 診断用
+let isCameraReady = false;
+
+// MediaPipeデータ
 let landmarks = null;
-let handScale = 100; 
 let thumbDistMm = 0;
-let distClose = 0; let distOpen = 0;
 
-let balls = []; let panels = [];
-let score = 0; let lives = 3;
+// キャリブレーション
+let distClose = 0; 
+let distOpen = 0;
+
+// ゲームデータ
+let balls = [];
+let panels = [];
+let score = 0;
+let lives = 3;
 let batSwing = 0;
 let frameCountVal = 0;
 
-// --- ログ表示 ---
-function log(msg) {
-  document.getElementById('debug-log').innerText = msg;
-  console.log(msg);
+// --- エラー表示 ---
+function showError(msg) {
+  const box = document.getElementById('error-box');
+  box.style.display = 'block';
+  box.innerHTML += "⚠️ " + msg + "<br>";
+  console.error(msg);
 }
 
-// --- 開始フロー ---
-async function startApp(hand) {
+// --- システムチェック & 起動 ---
+async function systemCheck(hand) {
   isRightHand = (hand === 'right');
-  switchScreen('screen-loading');
-  log("Requesting Camera...");
+  
+  // 1. HTTPSチェック
+  if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+    showError("エラー: https接続ではありません。カメラは起動しません。");
+    alert("【重要】\nこのアプリはセキュリティ制限のため、https接続（鍵マーク）のサイトでしか動作しません。\nURLを確認してください。");
+    return;
+  }
 
+  // UI切り替え
+  document.querySelector('#screen-menu .btn').innerText = "起動中...";
+  
+  // 2. カメラ取得トライ
   try {
-    // カメラ取得
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { 
-        facingMode: 'user', 
-        width: { ideal: 640 }, 
-        height: { ideal: 480 } 
+      video: {
+        // PC/スマホ両対応のため、facingModeは理想条件(ideal)にする
+        facingMode: { ideal: "user" },
+        width: { ideal: 640 },
+        height: { ideal: 480 }
       }
     });
-    
-    videoElement.srcObject = stream;
-    // スマホ用: 明示的に再生
-    await videoElement.play();
-    log("Camera Started. Loading AI...");
 
-    // MediaPipe初期化
+    // 成功したらビデオ要素にセット
+    videoElem.srcObject = stream;
+    // 重要：Promiseで再生完了を待つ
+    await videoElem.play();
+    
+    isCameraReady = true;
+    
+    // AI読み込みへ
+    initAI();
+
+  } catch (err) {
+    showError("カメラ起動失敗: " + err.name);
+    alert("カメラへのアクセスが拒否されたか、見つかりません。\nブラウザの設定を確認してください。");
+  }
+}
+
+// --- MediaPipe初期化 ---
+function initAI() {
+  try {
     hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
       maxNumHands: 1,
-      modelComplexity: 0, // Lite
+      modelComplexity: 0, // 0=Lite(軽量), 1=Full
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
     hands.onResults(onResults);
-
-    // AIループ開始
-    loopAI();
+    
+    // ループ開始
+    processVideo();
+    
+    // 画面遷移
+    appState = 1;
+    switchScreen('screen-calib');
+    setupCalib('close');
 
   } catch(e) {
-    log("Error: " + e.name + " / " + e.message);
-    alert("カメラエラー:\n" + e.name + "\nhttpsで開いていますか？");
-    switchScreen('screen-menu');
+    showError("AI初期化エラー: " + e.message);
   }
 }
 
-async function loopAI() {
-  if (videoElement.readyState >= 2) {
-    await hands.send({image: videoElement});
-    // AIが動いたら画面遷移（初回のみ）
-    if(appState === 0 || document.getElementById('screen-loading').classList.contains('active')) {
-      log("AI Ready. To Calibration.");
-      setupCalibClose();
-    }
+async function processVideo() {
+  if (videoElem.readyState >= 2) {
+    await hands.send({image: videoElem});
   }
-  requestAnimationFrame(loopAI);
+  requestAnimationFrame(processVideo);
 }
 
 function onResults(results) {
@@ -189,106 +226,70 @@ function onResults(results) {
   }
 }
 
+// --- 手の計算ロジック ---
 function calcHand() {
   if(!landmarks) return;
-  // 簡易計算: 手首(0)〜人差指付根(5)を10cmと仮定
-  // 親指先(4)〜人差指付根(5)の距離を計測
-  let w = width; let h = height;
-  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
-  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
-  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
-
-  let pxBase = dist(p0.x, p0.y, p5.x, p5.y);
-  let mmPerPx = 100 / pxBase;
-  let pxThumb = dist(p4.x, p4.y, p5.x, p5.y);
   
+  let w = width; let h = height;
+  // 座標取得 (反転処理込み)
+  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h}; // 手首
+  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; // 人差し指基部
+  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h}; // 親指先
+
+  // スケール計算（手首〜人差し指基部 = 100mm と仮定）
+  let pxBase = dist(p0.x, p0.y, p5.x, p5.y);
+  let mmPerPx = 100 / (pxBase || 1); // 0除算防止
+  
+  // 親指の開き計算
+  let pxThumb = dist(p4.x, p4.y, p5.x, p5.y);
   thumbDistMm = Math.floor(pxThumb * mmPerPx);
 
-  // UI反映
-  if(appState === 2) {
-    document.getElementById('calib-val').innerText = thumbDistMm + " mm";
+  // UI更新
+  if(appState === 1) {
+    document.getElementById('calib-display').innerText = thumbDistMm + " mm";
   }
+  document.getElementById('rom-val').innerText = "ROM: " + thumbDistMm + "mm";
 }
 
-// --- キャリブレーション手順 ---
-function setupCalibClose() {
-  appState = 2;
-  switchScreen('screen-calib');
-  // 状態初期化
-  distClose = 0; distOpen = 0;
-  updateCalibUI("測定：閉じる", "親指を閉じて（グー）<br>ボタンを押してください", "記録する");
-}
-
-function updateCalibUI(title, desc, btn) {
-  document.getElementById('calib-title').innerText = title;
-  document.getElementById('calib-desc').innerHTML = desc;
-  document.querySelector('#screen-calib .btn').innerText = btn;
-}
-
-function nextStep() {
-  const btn = document.querySelector('#screen-calib .btn');
-  const title = document.getElementById('calib-title');
-
-  if(title.innerText.includes("閉じる")) {
-    // 閉じた値を記録 -> 次へ
-    distClose = thumbDistMm;
-    updateCalibUI("測定：開く", "親指を最大まで開いて<br>ボタンを押してください", "ゲーム開始");
-  } else {
-    // 開いた値を記録 -> ゲームへ
-    distOpen = thumbDistMm;
-    if(distOpen <= distClose + 5) {
-      alert("動きが小さすぎます。もう一度測定します。");
-      setupCalibClose();
-      return;
-    }
-    startGame();
-  }
-}
-
-// --- ゲーム本体 ---
-function startGame() {
-  appState = 3;
-  switchScreen(null); // 全画面消去
-  document.getElementById('hud-lives').style.display = 'block';
-  score = 0; lives = 3; balls = []; panels = [];
-  updateLives();
-
-  // パネル生成
-  let pw = width*0.12; let ph = height*0.08;
-  let ox = isRightHand ? width*0.1 : width*0.55;
-  for(let r=0; r<3; r++){
-    for(let c=0; c<3; c++){
-      // 上段(r2)〜下段(r0)
-      let id = (r*3)+c+1;
-      let y = height*0.7 - (r*(ph+10));
-      let x = ox + c*(pw+5);
-      panels.push({id:id, x:x, y:y, w:pw, h:ph, active:true});
-    }
-  }
-  log("Game Started!");
-}
-
+// --- p5.js 描画ループ ---
 function setup() {
   createCanvas(windowWidth, windowHeight);
+  background(10); // 初期背景
 }
 
 function draw() {
-  clear(); // 透明
+  background(20);
 
-  // 1. 映像描画 (Canvasへ)
-  if(videoElement.readyState >= 2) {
+  // 1. カメラ映像の描画 (Coverモード)
+  if (isCameraReady && videoElem.readyState >= 2) {
+    let vw = videoElem.videoWidth;
+    let vh = videoElem.videoHeight;
+    
+    // アスペクト比計算
+    let scaleVal = max(width/vw, height/vh);
+    let drawW = vw * scaleVal;
+    let drawH = vh * scaleVal;
+    let dx = (width - drawW) / 2;
+    let dy = (height - drawH) / 2;
+
     push();
-    translate(width, 0); scale(-1, 1);
-    let vw = videoElement.videoWidth; let vh = videoElement.videoHeight;
-    let s = max(width/vw, height/vh);
-    let w = vw*s; let h = vh*s;
-    image(videoElement, (width-w)/2, (height-h)/2, w, h);
-    fill(0,100); noStroke(); rect(0,0,width,height); // 暗幕
+    translate(width, 0); scale(-1, 1); // 左右反転
+    // 反転しているので描画位置も調整が必要
+    // 画面中心を基準に描画
+    imageMode(CENTER);
+    image(videoElem, width/2, height/2, drawW, drawH);
     pop();
+
+    // 画面を暗くする
+    fill(0, 100); noStroke(); rect(0,0,width,height);
+  } else {
+    // カメラ未準備時
+    fill(255); textAlign(CENTER); textSize(14);
+    text("カメラ待機中...", width/2, height/2);
   }
 
   // 2. ゲーム描画
-  if(appState === 3) {
+  if(appState === 2) {
     runGame();
   }
 
@@ -297,13 +298,78 @@ function draw() {
 }
 
 function drawSkeleton() {
+  if(!landmarks) return;
   let w = width; let h = height;
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
   
-  stroke(0,255,255); strokeWeight(3);
+  stroke(0, 255, 255); strokeWeight(3);
   line(p5.x, p5.y, p4.x, p4.y);
   fill(255,0,0); noStroke(); circle(p4.x, p4.y, 15);
+}
+
+// --- キャリブレーション ---
+function setupCalib(mode) {
+  const title = document.getElementById('calib-title');
+  const msg = document.getElementById('calib-msg');
+  const btn = document.querySelector('#screen-calib .btn');
+  
+  if (mode === 'close') {
+    title.innerText = "測定：閉じる";
+    msg.innerHTML = "親指を閉じて（グー）<br>ボタンを押してください";
+    btn.innerText = "閉じた位置を記録";
+    distClose = 0; distOpen = 0;
+  } else {
+    title.innerText = "測定：開く";
+    msg.innerHTML = "親指を最大まで開いて<br>ボタンを押してください";
+    btn.innerText = "ゲームスタート";
+  }
+}
+
+function nextCalib() {
+  const title = document.getElementById('calib-title').innerText;
+  if(title.includes("閉じる")) {
+    distClose = thumbDistMm;
+    setupCalib('open');
+  } else {
+    distOpen = thumbDistMm;
+    // エラーチェック
+    if(distOpen <= distClose + 5) {
+      alert("動きが小さすぎます。しっかり動かして再測定してください。");
+      setupCalib('close');
+      return;
+    }
+    startGame();
+  }
+}
+
+// --- ゲームロジック ---
+function startGame() {
+  appState = 2;
+  switchScreen(null); // 全UI非表示
+  document.getElementById('hud').style.display = 'block';
+  document.getElementById('rom-val').style.display = 'block';
+  
+  score = 0; lives = 3; balls = []; panels = [];
+  createPanels();
+  updateLives();
+}
+
+function createPanels() {
+  panels = [];
+  let pw = width * 0.12; 
+  let ph = height * 0.08;
+  // 右手なら左側、左手なら右側にパネル配置
+  let startX = isRightHand ? width * 0.1 : width * 0.55; 
+  
+  for(let r=0; r<3; r++){
+    for(let c=0; c<3; c++){
+      let id = (r*3)+c+1;
+      let y = height*0.7 - (r*(ph+10));
+      let x = startX + c*(pw+5);
+      panels.push({id:id, x:x, y:y, w:pw, h:ph, active:true});
+    }
+  }
 }
 
 function runGame() {
@@ -313,69 +379,52 @@ function runGame() {
   let ratio = map(thumbDistMm, distClose, distOpen, 0, 1);
   batSwing = constrain(ratio, 0, 1);
   
-  // ガイドバー
   drawGauge();
 
   // ボール生成
-  if(frameCountVal % 100 === 0) spawnBall();
-  
-  // ボール処理
-  updateBalls();
-  
-  // パネル
-  drawPanels();
-}
+  if(frameCountVal % 90 === 0) {
+    let sx = isRightHand ? 0 : width;
+    let tx = isRightHand ? width*0.8 : width*0.2;
+    balls.push({
+      x:sx, y:height*0.6, 
+      vx:(tx-sx)/40, vy:0, 
+      active:true, hit:false
+    });
+  }
 
-function drawGauge() {
-  // 右端or左端にゲージ
-  let x = isRightHand ? width-20 : 20;
-  let h = 200;
-  let y = height/2;
-  
-  fill(100); rect(x-5, y-h/2, 10, h);
-  let barY = map(batSwing, 0, 1, y+h/2, y-h/2);
-  fill(0,255,0); circle(x, barY, 20);
-  
-  // 区切り
-  stroke(255);
-  line(x-10, y-h/6, x+10, y-h/6);
-  line(x-10, y+h/6, x+10, y+h/6);
-}
-
-function spawnBall() {
-  let sx = isRightHand ? 0 : width;
-  let tx = isRightHand ? width*0.8 : width*0.2;
-  balls.push({x:sx, y:height*0.6, vx:(tx-sx)/50, vy:0, active:true, hit:false});
-}
-
-function updateBalls() {
+  // ボール更新
   let hitX = isRightHand ? width*0.8 : width*0.2;
-
   for(let i=balls.length-1; i>=0; i--){
     let b = balls[i];
     b.x += b.vx; b.y += b.vy;
     
     fill(255); noStroke(); circle(b.x, b.y, 20);
-
-    // ヒット判定
-    if(!b.hit && b.active && abs(b.x - hitX) < 40 && batSwing > 0.2) {
-      b.hit = true;
-      // 狙い (0:下, 1:中, 2:上)
-      let aim = 0;
-      if(batSwing > 0.66) aim = 2;
-      else if(batSwing > 0.33) aim = 1;
-      
-      // 適当なパネルへ
-      let row = aim; let col = floor(random(3));
-      let pid = (row*3)+col+1;
-      let p = panels.find(pa => pa.id == pid);
-      let tx = p ? p.x+p.w/2 : (isRightHand?0:width);
-      let ty = p ? p.y+p.h/2 : 0;
-      let dx = tx-b.x; let dy = ty-b.y;
-      let d = sqrt(dx*dx+dy*dy);
-      b.vx = (dx/d)*20; b.vy = (dy/d)*20;
-    }
     
+    // ヒット判定
+    if(!b.hit && b.active && abs(b.x - hitX) < 50 && batSwing > 0.3) {
+      b.hit = true;
+      
+      // 打ち分けロジック
+      let aimRow = 0; // 0:下, 1:中, 2:上
+      if(batSwing > 0.66) aimRow = 2;
+      else if(batSwing > 0.33) aimRow = 1;
+
+      // 狙った行の適当なパネルを探す
+      let targets = panels.filter(p => p.active && Math.floor((p.id-1)/3) === aimRow);
+      // なければ全パネルから探す
+      if(targets.length === 0) targets = panels.filter(p => p.active);
+      
+      let target = null;
+      if(targets.length > 0) target = targets[Math.floor(random(targets.length))];
+      
+      let tx = target ? target.x + target.w/2 : (isRightHand?0:width);
+      let ty = target ? target.y + target.h/2 : 0;
+      
+      let dx = tx - b.x; let dy = ty - b.y;
+      let len = sqrt(dx*dx + dy*dy);
+      b.vx = (dx/len)*30; b.vy = (dy/len)*30;
+    }
+
     // パネル破壊
     if(b.hit && b.active) {
       for(let p of panels) {
@@ -386,43 +435,55 @@ function updateBalls() {
     }
     
     // 画面外
-    if(b.x<-50 || b.x>width+50 || b.y<-50 || b.y>height+50) {
+    if(b.x<-100 || b.x>width+100 || b.y<-100 || b.y>height+100) {
       if(!b.hit && b.active) {
         lives--; updateLives();
-        if(lives<=0) { appState=4; document.getElementById('final-score').innerText="Score: "+score; switchScreen('screen-result'); }
+        if(lives<=0) {
+          appState=3; 
+          document.getElementById('score-result').innerText = "Score: "+score; 
+          switchScreen('screen-result');
+        }
       }
       balls.splice(i,1);
     }
   }
-}
 
-function drawPanels() {
-  let allClear = true;
+  // パネル描画
+  let activeCnt = 0;
   for(let p of panels) {
     if(p.active) {
-      allClear = false;
-      fill(0,200,0,150); stroke(255); rect(p.x, p.y, p.w, p.h);
-      fill(255); noStroke(); textAlign(CENTER,CENTER); textSize(20);
+      activeCnt++;
+      fill(0,200,0,150); stroke(255); strokeWeight(2);
+      rect(p.x, p.y, p.w, p.h);
+      fill(255); noStroke(); textAlign(CENTER,CENTER); textSize(24);
       text(p.id, p.x+p.w/2, p.y+p.h/2);
     }
   }
-  if(allClear && panels.length > 0) {
-    score+=1000; startGame(); // ループ
+  if(activeCnt === 0 && panels.length > 0) {
+    score+=1000; createPanels();
   }
 }
 
+function drawGauge() {
+  let x = isRightHand ? width-30 : 30;
+  let y = height/2; let h = 200;
+  fill(100,100); rect(x-5, y-h/2, 10, h);
+  let cy = map(batSwing, 0, 1, y+h/2, y-h/2);
+  fill(0,255,0); circle(x, cy, 20);
+  stroke(255); line(x-10, y-h/6, x+10, y-h/6); line(x-10, y+h/6, x+10, y+h/6);
+}
+
 function updateLives() {
-  let s = ""; for(let i=0;i<lives;i++) s+="❤️";
-  document.getElementById('hud-lives').innerHTML = s + " " + score;
+  let s = ""; for(let i=0; i<lives; i++) s+="❤️";
+  document.getElementById('hud').innerHTML = s + " <span style='font-size:16px'>Score: "+score+"</span>";
 }
 
 function switchScreen(id) {
-  document.querySelectorAll('.screen').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.screen').forEach(e => e.classList.remove('active'));
   if(id) document.getElementById(id).classList.add('active');
 }
 
-function windowResized() { resizeCanvas(windowWidth, windowHeight); }
+function windowResized(){ resizeCanvas(windowWidth, windowHeight); }
 </script>
 </body>
 </html>
-
