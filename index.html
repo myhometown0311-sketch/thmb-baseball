@@ -2,73 +2,70 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Thumb Rehab Universal</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Thumb Rehab Plan B</title>
 <style>
+  /* 全体レイアウト */
   body {
     margin: 0; padding: 0; overflow: hidden;
-    background-color: #111; font-family: sans-serif;
+    background-color: #000; font-family: sans-serif;
     color: white; touch-action: none;
   }
+
+  /* --- レイヤー構造 --- */
   
-  /* ゲーム画面（キャンバス） */
+  /* レイヤー1 (最奥): カメラ映像 */
+  /* ブラウザ標準のプレイヤーをそのまま使うことで表示トラブルを回避 */
+  #input_video {
+    position: fixed; top: 0; left: 0; 
+    width: 100%; height: 100%;
+    object-fit: cover; /* 画面いっぱいに広げる */
+    z-index: 0;
+    transform: scaleX(-1); /* 鏡のように反転 */
+  }
+
+  /* レイヤー2 (中間): ゲーム描画キャンバス */
   canvas {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 1;
+    z-index: 10;
   }
 
-  /* HTMLビデオ要素（裏で動かす用：非表示だが存在させる） */
-  #raw-video {
-    position: absolute; top: 0; left: 0; width: 1px; height: 1px;
-    opacity: 0; pointer-events: none; z-index: -10;
-  }
-
-  /* UIレイヤー */
+  /* レイヤー3 (最前面): UI操作パネル */
   #ui-layer {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 100; pointer-events: none;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
 
-  /* パネル */
+  /* パネルデザイン */
   .screen {
-    position: relative; width: 90%; max-width: 450px;
-    background: rgba(20,20,20,0.9);
-    border: 2px solid #666; border-radius: 12px;
-    padding: 25px; text-align: center;
+    background: rgba(0, 0, 0, 0.85);
+    border: 2px solid #ffcc00; border-radius: 15px;
+    padding: 20px; text-align: center;
+    width: 90%; max-width: 400px;
     pointer-events: auto; display: none;
-    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
   }
   .screen.active { display: block; }
 
-  h1 { color: #ffeb3b; margin: 0 0 10px 0; }
-  p { color: #ccc; margin-bottom: 20px; font-size: 14px; line-height: 1.5; }
+  h1 { color: #ffeb3b; font-size: 20px; margin: 0 0 10px 0; }
+  p { font-size: 14px; color: #ccc; }
 
   .btn {
     width: 100%; padding: 15px; font-size: 18px; font-weight: bold;
-    background: #ffeb3b; border: none; border-radius: 8px;
-    cursor: pointer; margin-top: 10px; color: #000;
+    background: #ffeb3b; color: #000; border: none; border-radius: 30px;
+    margin-top: 10px; cursor: pointer;
   }
-  .btn:hover { background: #fdd835; }
 
-  /* エラー表示エリア（最重要） */
-  #error-box {
-    position: fixed; top: 0; left: 0; width: 100%;
-    background: #d32f2f; color: white; padding: 10px;
-    font-size: 12px; font-family: monospace; z-index: 9999;
-    display: none; text-align: center;
+  /* エラー表示 */
+  #debug-msg {
+    position: fixed; bottom: 0; left: 0; width: 100%;
+    background: rgba(255,0,0,0.8); color: white;
+    font-size: 12px; display: none; padding: 5px; z-index: 999;
   }
-  
+
   /* HUD */
-  #hud {
-    position: fixed; top: 10px; left: 10px; z-index: 50;
-    font-size: 20px; display: none; text-shadow: 1px 1px 2px black;
-  }
-  #rom-val {
-    position: fixed; top: 10px; right: 10px; z-index: 50;
-    font-size: 16px; background: rgba(0,0,0,0.5); padding: 5px;
-    border: 1px solid cyan; color: cyan; display: none;
-  }
+  #hud-lives { position: fixed; top: 10px; left: 10px; font-size: 20px; z-index: 50; display: none; }
+  #hud-rom { position: fixed; top: 10px; right: 10px; font-size: 14px; color: cyan; z-index: 50; display: none; background:rgba(0,0,0,0.5); padding:5px; }
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
@@ -77,55 +74,45 @@
 </head>
 <body>
 
-<div id="error-box"></div>
+<video id="input_video" playsinline webkit-playsinline muted autoplay></video>
 
-<video id="raw-video" playsinline webkit-playsinline muted></video>
-
-<div id="hud">❤️❤️❤️</div>
-<div id="rom-val">ROM: 0mm</div>
+<div id="debug-msg"></div>
+<div id="hud-lives">❤️❤️❤️</div>
+<div id="hud-rom">ROM: 0mm</div>
 
 <div id="ui-layer">
-  
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab</h1>
-    <p>PC/スマホ対応 親指リハビリ<br>
-    <small>※https接続が必須です</small></p>
-    <button class="btn" onclick="systemCheck('right')">右手で開始</button>
-    <button class="btn" onclick="systemCheck('left')">左手で開始</button>
+    <h1>Thumb Rehab (Plan B)</h1>
+    <p>オーバーレイ方式による起動モード<br>カメラ許可が必要です</p>
+    <button class="btn" onclick="initSystem('right')">右手でスタート</button>
+    <button class="btn" onclick="initSystem('left')">左手でスタート</button>
   </div>
 
   <div id="screen-calib" class="screen">
-    <h2 id="calib-title" style="color:cyan;">測定：閉じる</h2>
-    <p id="calib-msg">親指を閉じて（グー）<br>ボタンを押してください</p>
-    <div id="calib-display" style="font-size:30px; color:cyan; margin:15px;">0 mm</div>
-    <button class="btn" onclick="nextCalib()">記録する</button>
+    <h2 id="calib-title" style="color:cyan; margin:0;">閉じる測定</h2>
+    <p id="calib-msg">親指を閉じてボタンを押してください</p>
+    <div id="calib-val" style="font-size:30px; color:cyan; margin:15px;">0 mm</div>
+    <button class="btn" onclick="nextCalib()">記録</button>
   </div>
 
   <div id="screen-result" class="screen">
-    <h1 style="color:#ff5252;">終了</h1>
-    <p id="score-result">Score: 0</p>
+    <h1 style="color:#ff5555;">終了</h1>
+    <p id="final-score">Score: 0</p>
     <button class="btn" onclick="location.reload()">タイトルへ</button>
   </div>
-
 </div>
 
 <script>
 // --- グローバル変数 ---
-const videoElem = document.getElementById('raw-video');
+const videoElem = document.getElementById('input_video');
 let hands;
 let isRightHand = true;
-let appState = 0; // 0:Menu, 1:Calib, 2:Game, 3:Result
+let appState = 0; // 0:Menu, 1:Calib, 2:Game
 
-// 診断用
-let isCameraReady = false;
-
-// MediaPipeデータ
+// データ
 let landmarks = null;
 let thumbDistMm = 0;
-
-// キャリブレーション
-let distClose = 0; 
-let distOpen = 0;
+let distClose = 0; let distOpen = 0;
 
 // ゲームデータ
 let balls = [];
@@ -135,69 +122,64 @@ let lives = 3;
 let batSwing = 0;
 let frameCountVal = 0;
 
-// --- エラー表示 ---
-function showError(msg) {
-  const box = document.getElementById('error-box');
-  box.style.display = 'block';
-  box.innerHTML += "⚠️ " + msg + "<br>";
+// --- エラーハンドリング ---
+function logError(msg) {
+  const el = document.getElementById('debug-msg');
+  el.style.display = 'block';
+  el.innerText = "Error: " + msg;
   console.error(msg);
 }
 
-// --- システムチェック & 起動 ---
-async function systemCheck(hand) {
+// --- 初期化フロー ---
+async function initSystem(hand) {
   isRightHand = (hand === 'right');
   
-  // 1. HTTPSチェック
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    showError("エラー: https接続ではありません。カメラは起動しません。");
-    alert("【重要】\nこのアプリはセキュリティ制限のため、https接続（鍵マーク）のサイトでしか動作しません。\nURLを確認してください。");
+    alert("https接続（鍵マーク）が必要です。");
     return;
   }
 
-  // UI切り替え
-  document.querySelector('#screen-menu .btn').innerText = "起動中...";
-  
-  // 2. カメラ取得トライ
+  // ボタン変化
+  document.querySelector('#screen-menu .btn').innerText = "カメラ起動中...";
+
   try {
+    // 1. カメラ取得 (ブラウザ標準API)
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
-        // PC/スマホ両対応のため、facingModeは理想条件(ideal)にする
-        facingMode: { ideal: "user" },
+        facingMode: 'user', // インカメラ
         width: { ideal: 640 },
         height: { ideal: 480 }
       }
     });
 
-    // 成功したらビデオ要素にセット
+    // 2. ビデオタグに直結 (Plan Bのキモ)
     videoElem.srcObject = stream;
-    // 重要：Promiseで再生完了を待つ
-    await videoElem.play();
     
-    isCameraReady = true;
-    
-    // AI読み込みへ
-    initAI();
+    // 再生待機
+    videoElem.onloadedmetadata = () => {
+      videoElem.play();
+      initAI(); // 映像が来たらAI開始
+    };
 
   } catch (err) {
-    showError("カメラ起動失敗: " + err.name);
-    alert("カメラへのアクセスが拒否されたか、見つかりません。\nブラウザの設定を確認してください。");
+    logError("カメラ起動失敗: " + err.name);
+    alert("カメラが起動できませんでした。\n設定を確認してください。");
   }
 }
 
-// --- MediaPipe初期化 ---
+// --- MediaPipe設定 ---
 function initAI() {
   try {
     hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
       maxNumHands: 1,
-      modelComplexity: 0, // 0=Lite(軽量), 1=Full
+      modelComplexity: 0, // Lite
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
     hands.onResults(onResults);
     
-    // ループ開始
     processVideo();
     
     // 画面遷移
@@ -206,12 +188,12 @@ function initAI() {
     setupCalib('close');
 
   } catch(e) {
-    showError("AI初期化エラー: " + e.message);
+    logError("AI Init Error: " + e);
   }
 }
 
 async function processVideo() {
-  if (videoElem.readyState >= 2) {
+  if (videoElem.videoWidth > 0) {
     await hands.send({image: videoElem});
   }
   requestAnimationFrame(processVideo);
@@ -226,116 +208,93 @@ function onResults(results) {
   }
 }
 
-// --- 手の計算ロジック ---
 function calcHand() {
   if(!landmarks) return;
-  
+  // Canvasサイズに基づく計算
   let w = width; let h = height;
-  // 座標取得 (反転処理込み)
-  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h}; // 手首
-  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; // 人差し指基部
-  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h}; // 親指先
-
-  // スケール計算（手首〜人差し指基部 = 100mm と仮定）
-  let pxBase = dist(p0.x, p0.y, p5.x, p5.y);
-  let mmPerPx = 100 / (pxBase || 1); // 0除算防止
   
-  // 親指の開き計算
-  let pxThumb = dist(p4.x, p4.y, p5.x, p5.y);
-  thumbDistMm = Math.floor(pxThumb * mmPerPx);
+  // 座標変換 (videoがCSSで反転されているため、ここでは論理座標として扱う)
+  // MediaPipeは 0.0-1.0 で返してくる
+  // ただし、描画時にp5.js側でも反転させる必要があるか、整合性を取る必要がある
+  // Plan Bでは videoがCSS反転、Canvasは透明。
+  // そのため、Landmark座標をそのまま使うと、左右が一致しない可能性がある。
+  // ここでは「見た目」に合わせるため、X座標を反転して計算・描画する。
+  
+  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
+  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
+  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
 
-  // UI更新
-  if(appState === 1) {
-    document.getElementById('calib-display').innerText = thumbDistMm + " mm";
-  }
-  document.getElementById('rom-val').innerText = "ROM: " + thumbDistMm + "mm";
+  let basePx = dist(p0.x, p0.y, p5.x, p5.y);
+  let mmPerPx = 100 / (basePx || 1);
+  let thumbPx = dist(p4.x, p4.y, p5.x, p5.y);
+  
+  thumbDistMm = Math.floor(thumbPx * mmPerPx);
+
+  if(appState===1) document.getElementById('calib-val').innerText = thumbDistMm + " mm";
+  document.getElementById('hud-rom').innerText = "ROM: " + thumbDistMm + "mm";
 }
 
-// --- p5.js 描画ループ ---
+// --- p5.js 描画 (UIのみ描画・背景は透明) ---
 function setup() {
-  createCanvas(windowWidth, windowHeight);
-  background(10); // 初期背景
+  let cvs = createCanvas(windowWidth, windowHeight);
+  cvs.style('pointer-events', 'none'); // ゲーム画面はクリック透過
+  clear(); // 透明にする
 }
 
 function draw() {
-  background(20);
+  clear(); // 毎フレーム透明に戻す（ビデオが見えるように）
+  
+  // カメラ映像は videoタグが表示しているので、ここでは描画しない！
+  // これにより黒画面バグを回避
 
-  // 1. カメラ映像の描画 (Coverモード)
-  if (isCameraReady && videoElem.readyState >= 2) {
-    let vw = videoElem.videoWidth;
-    let vh = videoElem.videoHeight;
-    
-    // アスペクト比計算
-    let scaleVal = max(width/vw, height/vh);
-    let drawW = vw * scaleVal;
-    let drawH = vh * scaleVal;
-    let dx = (width - drawW) / 2;
-    let dy = (height - drawH) / 2;
-
-    push();
-    translate(width, 0); scale(-1, 1); // 左右反転
-    // 反転しているので描画位置も調整が必要
-    // 画面中心を基準に描画
-    imageMode(CENTER);
-    image(videoElem, width/2, height/2, drawW, drawH);
-    pop();
-
-    // 画面を暗くする
-    fill(0, 100); noStroke(); rect(0,0,width,height);
-  } else {
-    // カメラ未準備時
-    fill(255); textAlign(CENTER); textSize(14);
-    text("カメラ待機中...", width/2, height/2);
-  }
-
-  // 2. ゲーム描画
   if(appState === 2) {
     runGame();
   }
 
-  // 3. 骨格ガイド
-  if(landmarks) drawSkeleton();
+  // 骨格ガイド
+  if(landmarks) {
+    drawSkeleton();
+  }
 }
 
 function drawSkeleton() {
-  if(!landmarks) return;
+  // 手のガイド表示
   let w = width; let h = height;
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
   
   stroke(0, 255, 255); strokeWeight(3);
   line(p5.x, p5.y, p4.x, p4.y);
-  fill(255,0,0); noStroke(); circle(p4.x, p4.y, 15);
+  fill(255, 0, 0); noStroke(); circle(p4.x, p4.y, 15);
 }
 
 // --- キャリブレーション ---
 function setupCalib(mode) {
-  const title = document.getElementById('calib-title');
-  const msg = document.getElementById('calib-msg');
-  const btn = document.querySelector('#screen-calib .btn');
+  const t = document.getElementById('calib-title');
+  const m = document.getElementById('calib-msg');
+  const b = document.querySelector('#screen-calib .btn');
   
-  if (mode === 'close') {
-    title.innerText = "測定：閉じる";
-    msg.innerHTML = "親指を閉じて（グー）<br>ボタンを押してください";
-    btn.innerText = "閉じた位置を記録";
+  if(mode === 'close') {
+    t.innerText = "測定：閉じる";
+    m.innerHTML = "親指を閉じて（グー）<br>ボタンを押してください";
+    b.innerText = "記録";
     distClose = 0; distOpen = 0;
   } else {
-    title.innerText = "測定：開く";
-    msg.innerHTML = "親指を最大まで開いて<br>ボタンを押してください";
-    btn.innerText = "ゲームスタート";
+    t.innerText = "測定：開く";
+    m.innerHTML = "親指を最大まで開いて<br>ボタンを押してください";
+    b.innerText = "ゲーム開始";
   }
 }
 
 function nextCalib() {
-  const title = document.getElementById('calib-title').innerText;
-  if(title.includes("閉じる")) {
+  const t = document.getElementById('calib-title').innerText;
+  if(t.includes("閉じる")) {
     distClose = thumbDistMm;
     setupCalib('open');
   } else {
     distOpen = thumbDistMm;
-    // エラーチェック
     if(distOpen <= distClose + 5) {
-      alert("動きが小さすぎます。しっかり動かして再測定してください。");
+      alert("動きが小さすぎます。再測定します。");
       setupCalib('close');
       return;
     }
@@ -346,27 +305,25 @@ function nextCalib() {
 // --- ゲームロジック ---
 function startGame() {
   appState = 2;
-  switchScreen(null); // 全UI非表示
-  document.getElementById('hud').style.display = 'block';
-  document.getElementById('rom-val').style.display = 'block';
+  switchScreen(null);
+  document.getElementById('hud-lives').style.display = 'block';
+  document.getElementById('hud-rom').style.display = 'block';
   
   score = 0; lives = 3; balls = []; panels = [];
-  createPanels();
+  initPanels();
   updateLives();
 }
 
-function createPanels() {
+function initPanels() {
   panels = [];
-  let pw = width * 0.12; 
-  let ph = height * 0.08;
-  // 右手なら左側、左手なら右側にパネル配置
-  let startX = isRightHand ? width * 0.1 : width * 0.55; 
+  let pw = width*0.12; let ph = height*0.08;
+  let sx = isRightHand ? width*0.1 : width*0.55;
   
   for(let r=0; r<3; r++){
     for(let c=0; c<3; c++){
       let id = (r*3)+c+1;
       let y = height*0.7 - (r*(ph+10));
-      let x = startX + c*(pw+5);
+      let x = sx + c*(pw+5);
       panels.push({id:id, x:x, y:y, w:pw, h:ph, active:true});
     }
   }
@@ -375,13 +332,13 @@ function createPanels() {
 function runGame() {
   frameCountVal++;
   
-  // スイング計算
+  // 操作量
   let ratio = map(thumbDistMm, distClose, distOpen, 0, 1);
   batSwing = constrain(ratio, 0, 1);
   
   drawGauge();
 
-  // ボール生成
+  // ボール
   if(frameCountVal % 90 === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
@@ -393,54 +350,45 @@ function runGame() {
   }
 
   // ボール更新
-  let hitX = isRightHand ? width*0.8 : width*0.2;
+  let hitZone = isRightHand ? width*0.8 : width*0.2;
   for(let i=balls.length-1; i>=0; i--){
     let b = balls[i];
     b.x += b.vx; b.y += b.vy;
     
-    fill(255); noStroke(); circle(b.x, b.y, 20);
+    fill(255); stroke(0); circle(b.x, b.y, 20);
     
-    // ヒット判定
-    if(!b.hit && b.active && abs(b.x - hitX) < 50 && batSwing > 0.3) {
+    // ヒット
+    if(!b.hit && b.active && abs(b.x - hitZone) < 50 && batSwing > 0.3) {
       b.hit = true;
+      let aim = 0;
+      if(batSwing > 0.66) aim = 2; else if(batSwing > 0.33) aim = 1;
       
-      // 打ち分けロジック
-      let aimRow = 0; // 0:下, 1:中, 2:上
-      if(batSwing > 0.66) aimRow = 2;
-      else if(batSwing > 0.33) aimRow = 1;
-
-      // 狙った行の適当なパネルを探す
-      let targets = panels.filter(p => p.active && Math.floor((p.id-1)/3) === aimRow);
-      // なければ全パネルから探す
+      // ターゲット検索
+      let targets = panels.filter(p => p.active && Math.floor((p.id-1)/3) === aim);
       if(targets.length === 0) targets = panels.filter(p => p.active);
+      let t = targets.length > 0 ? targets[floor(random(targets.length))] : null;
       
-      let target = null;
-      if(targets.length > 0) target = targets[Math.floor(random(targets.length))];
-      
-      let tx = target ? target.x + target.w/2 : (isRightHand?0:width);
-      let ty = target ? target.y + target.h/2 : 0;
-      
-      let dx = tx - b.x; let dy = ty - b.y;
-      let len = sqrt(dx*dx + dy*dy);
+      let tx = t ? t.x+t.w/2 : (isRightHand?0:width);
+      let ty = t ? t.y+t.h/2 : 0;
+      let dx = tx-b.x; let dy = ty-b.y; let len = sqrt(dx*dx+dy*dy);
       b.vx = (dx/len)*30; b.vy = (dy/len)*30;
     }
-
-    // パネル破壊
+    
+    // 破壊
     if(b.hit && b.active) {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
-          p.active = false; b.active = false; score+=100; updateLives(); break;
+          p.active=false; b.active=false; score+=100; updateLives(); break;
         }
       }
     }
     
-    // 画面外
+    // 消失
     if(b.x<-100 || b.x>width+100 || b.y<-100 || b.y>height+100) {
       if(!b.hit && b.active) {
         lives--; updateLives();
         if(lives<=0) {
-          appState=3; 
-          document.getElementById('score-result').innerText = "Score: "+score; 
+          appState=3; document.getElementById('final-score').innerText="Score: "+score;
           switchScreen('screen-result');
         }
       }
@@ -448,42 +396,40 @@ function runGame() {
     }
   }
 
-  // パネル描画
-  let activeCnt = 0;
+  // パネル
+  let cnt=0;
   for(let p of panels) {
     if(p.active) {
-      activeCnt++;
+      cnt++;
       fill(0,200,0,150); stroke(255); strokeWeight(2);
       rect(p.x, p.y, p.w, p.h);
       fill(255); noStroke(); textAlign(CENTER,CENTER); textSize(24);
       text(p.id, p.x+p.w/2, p.y+p.h/2);
     }
   }
-  if(activeCnt === 0 && panels.length > 0) {
-    score+=1000; createPanels();
-  }
+  if(cnt===0 && panels.length>0) { score+=1000; initPanels(); }
 }
 
 function drawGauge() {
   let x = isRightHand ? width-30 : 30;
   let y = height/2; let h = 200;
-  fill(100,100); rect(x-5, y-h/2, 10, h);
+  fill(100, 150); rect(x-5, y-h/2, 10, h);
   let cy = map(batSwing, 0, 1, y+h/2, y-h/2);
   fill(0,255,0); circle(x, cy, 20);
   stroke(255); line(x-10, y-h/6, x+10, y-h/6); line(x-10, y+h/6, x+10, y+h/6);
 }
 
 function updateLives() {
-  let s = ""; for(let i=0; i<lives; i++) s+="❤️";
-  document.getElementById('hud').innerHTML = s + " <span style='font-size:16px'>Score: "+score+"</span>";
+  let s=""; for(let i=0;i<lives;i++) s+="❤️";
+  document.getElementById('hud-lives').innerHTML = s + " <span style='font-size:16px'>Score: "+score+"</span>";
 }
 
 function switchScreen(id) {
-  document.querySelectorAll('.screen').forEach(e => e.classList.remove('active'));
+  document.querySelectorAll('.screen').forEach(e=>e.classList.remove('active'));
   if(id) document.getElementById(id).classList.add('active');
 }
 
-function windowResized(){ resizeCanvas(windowWidth, windowHeight); }
+function windowResized() { resizeCanvas(windowWidth, windowHeight); }
 </script>
 </body>
 </html>
