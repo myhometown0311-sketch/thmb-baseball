@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Complete</title>
+<title>Thumb Rehab Angle</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -37,7 +37,7 @@
     padding: 20px; text-align: center; width: 90%; max-width: 420px;
     pointer-events: auto; display: none;
     box-shadow: 0 10px 40px rgba(0,0,0,0.8);
-    max-height: 90vh; overflow-y: auto; /* 縦長画面対応 */
+    max-height: 90vh; overflow-y: auto;
   }
   .screen.active { display: block; }
 
@@ -62,13 +62,6 @@
   }
   .btn:active { transform: scale(0.96); }
 
-  /* エラーログ */
-  #debug-msg {
-    position: fixed; bottom: 0; left: 0; width: 100%;
-    background: rgba(255,0,0,0.8); color: white;
-    font-size: 12px; display: none; padding: 5px; z-index: 999;
-  }
-
   /* HUD */
   #hud-top {
     position: fixed; top: 15px; left: 15px; z-index: 50;
@@ -78,10 +71,11 @@
   #score-display { font-size: 20px; font-weight: bold; color: #fff; }
   #level-display { font-size: 18px; color: #ffeb3b; margin-top: 2px; }
 
+  /* ROM (角度) 表示 */
   #hud-rom { 
-    position: fixed; top: 15px; right: 15px; font-size: 14px; 
+    position: fixed; top: 15px; right: 15px; font-size: 16px; font-weight: bold;
     color: cyan; z-index: 50; display: none; 
-    background:rgba(0,0,0,0.6); padding:6px 12px; border-radius:8px; 
+    background:rgba(0,0,0,0.7); padding:8px 15px; border-radius:8px; 
     border:1px solid cyan;
   }
 
@@ -114,29 +108,27 @@
 
 <video id="input_video" playsinline webkit-playsinline muted autoplay></video>
 
-<div id="debug-msg"></div>
-
 <div id="hud-top">
   <div id="lives-display">❤️❤️❤️</div>
   <div id="score-display">Score: 0</div>
   <div id="level-display">Lv. 1</div>
 </div>
 
-<div id="hud-rom">ROM: 0mm</div>
+<div id="hud-rom">0°</div>
 <div id="swing-indicator"></div>
 <div id="praise-overlay">Good Job!</div>
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab</h1>
+    <h1>Thumb Rehab (Angle)</h1>
     
     <div class="instructions">
       <span class="step-num">手順1</span> プレイする手を選んでスタート<br>
-      <span class="step-num">手順2</span> 測定モードで「グー(閉じる)」と「パー(開く)」の可動域を登録<br>
+      <span class="step-num">手順2</span> 測定モードで「グー(閉じる)」と「パー(開く)」の<strong>角度</strong>を登録<br>
       <span class="step-num">手順3</span> ゲーム開始！<br>
-      &nbsp;&nbsp;● <strong>待つ時</strong>：親指を閉じて構える<br>
-      &nbsp;&nbsp;● <strong>打つ時</strong>：ボールに合わせてパッと開く！<br>
-      <span style="color:#ffeb3b; font-size:11px;">※大きく開くと上段、小さく開くと下段に飛びます</span>
+      &nbsp;&nbsp;● <strong>基本</strong>：親指を閉じてボールを待つ<br>
+      &nbsp;&nbsp;● <strong>打撃</strong>：タイミングよく開く！<br>
+      <span style="color:#ffeb3b; font-size:11px;">※振り遅れても少しの間は当たります！</span>
     </div>
 
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
@@ -146,7 +138,7 @@
   <div id="screen-calib" class="screen">
     <h2 id="calib-title">測定：閉じる</h2>
     <p id="calib-msg">親指を閉じて（グー）<br>ボタンを押してください</p>
-    <div id="calib-val" style="font-size:32px; color:cyan; margin:20px;">0 mm</div>
+    <div id="calib-val" style="font-size:40px; color:cyan; margin:20px; font-family:monospace;">0°</div>
     <button class="btn" onclick="nextCalib()">記録</button>
   </div>
 
@@ -167,9 +159,9 @@ let appState = 0; // 0:Menu, 1:Calib, 2:Game
 
 // 手のデータ
 let landmarks = null;
-let thumbDistMm = 0;
-let distClose = 0; 
-let distOpen = 0;
+let thumbAngle = 0; // 角度(度)
+let angleClose = 0; 
+let angleOpen = 0;
 
 // ゲームデータ
 let balls = [];
@@ -182,8 +174,9 @@ let level = 1;
 let batSwing = 0;     
 let prevBatSwing = 0; 
 let frameCountVal = 0;
+let swingActiveTimer = 0; // 【修正】スイング有効時間
 
-// 褒め言葉リスト (1000pt毎にランダム表示)
+// 褒め言葉リスト
 const praiseMessages = [
   "ナイス親指！", 
   "素晴らしい動き！", 
@@ -197,14 +190,6 @@ const praiseMessages = [
   "筋肉が躍動してます！"
 ];
 let nextPraiseScore = 1000;
-
-// --- エラー表示 ---
-function logError(msg) {
-  const el = document.getElementById('debug-msg');
-  el.style.display = 'block';
-  el.innerText = "Error: " + msg;
-  console.error(msg);
-}
 
 // --- 初期化 ---
 async function initSystem(hand) {
@@ -230,27 +215,21 @@ async function initSystem(hand) {
     };
 
   } catch (err) {
-    logError("カメラ起動エラー: " + err.name);
-    alert("カメラ設定を確認してください。");
+    alert("カメラエラー: " + err.name);
   }
 }
 
 function initAI() {
-  try {
-    hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-    hands.setOptions({
-      maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
-    });
-    hands.onResults(onResults);
-    processVideo();
-    
-    appState = 1;
-    switchScreen('screen-calib');
-    setupCalib('close');
-
-  } catch(e) {
-    logError("AI Init: " + e);
-  }
+  hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+  hands.setOptions({
+    maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
+  });
+  hands.onResults(onResults);
+  processVideo();
+  
+  appState = 1;
+  switchScreen('screen-calib');
+  setupCalib('close');
 }
 
 async function processVideo() {
@@ -267,22 +246,41 @@ function onResults(results) {
   }
 }
 
+// 【修正】角度計算ロジック
 function calcHand() {
   if(!landmarks) return;
   let w = width; let h = height;
+
   // Video CSS反転対応のためX反転
-  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
-  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
-  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
+  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h}; // 手首
+  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; // 人差し指基部
+  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h}; // 親指先
 
-  let base = dist(p0.x, p0.y, p5.x, p5.y);
-  let mmPerPx = 100 / (base || 1);
-  let thumbPx = dist(p4.x, p4.y, p5.x, p5.y);
+  // ベクトル計算
+  // v1: 手首 -> 人差し指 (基準線)
+  let v1 = {x: p5.x - p0.x, y: p5.y - p0.y};
+  // v2: 手首 -> 親指 (動く線)
+  let v2 = {x: p4.x - p0.x, y: p4.y - p0.y};
+
+  // 内積と大きさから角度を求める
+  let dot = v1.x * v2.x + v1.y * v2.y;
+  let mag1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y);
+  let mag2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y);
   
-  thumbDistMm = Math.floor(thumbPx * mmPerPx);
+  if (mag1 * mag2 === 0) return; // エラー回避
 
-  if(appState===1) document.getElementById('calib-val').innerText = thumbDistMm + " mm";
-  document.getElementById('hud-rom').innerText = "ROM: " + thumbDistMm + "mm";
+  let cosTheta = dot / (mag1 * mag2);
+  // 誤差修正
+  cosTheta = Math.max(-1, Math.min(1, cosTheta));
+  
+  let rad = Math.acos(cosTheta);
+  let deg = Math.floor(rad * (180 / Math.PI)); // 度数法に変換
+
+  thumbAngle = deg;
+
+  // UI更新
+  if(appState===1) document.getElementById('calib-val').innerText = thumbAngle + "°";
+  document.getElementById('hud-rom').innerText = thumbAngle + "°";
 }
 
 // --- p5.js ---
@@ -300,9 +298,16 @@ function draw() {
 
 function drawSkeleton() {
   let w = width; let h = height;
+  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
-  stroke(0, 255, 255); strokeWeight(3); line(p5.x, p5.y, p4.x, p4.y);
+  
+  // 角度を示す線
+  stroke(100, 200, 255, 150); strokeWeight(4);
+  line(p0.x, p0.y, p5.x, p5.y); // 基準
+  stroke(255, 100, 100, 200);
+  line(p0.x, p0.y, p4.x, p4.y); // 親指
+
   fill(255, 0, 0); noStroke(); circle(p4.x, p4.y, 15);
 }
 
@@ -316,7 +321,7 @@ function setupCalib(mode) {
     t.innerText = "測定：閉じる";
     m.innerHTML = "親指を閉じて（グー）<br>ボタンを押してください";
     b.innerText = "記録";
-    distClose = 0; distOpen = 0;
+    angleClose = 0; angleOpen = 0;
   } else {
     t.innerText = "測定：開く";
     m.innerHTML = "親指を最大まで開いて<br>ボタンを押してください";
@@ -327,12 +332,13 @@ function setupCalib(mode) {
 function nextCalib() {
   const t = document.getElementById('calib-title').innerText;
   if(t.includes("閉じる")) {
-    distClose = thumbDistMm;
+    angleClose = thumbAngle;
     setupCalib('open');
   } else {
-    distOpen = thumbDistMm;
-    if(distOpen <= distClose + 5) {
-      alert("動きが小さすぎます。");
+    angleOpen = thumbAngle;
+    // 角度差チェック (5度以上)
+    if(Math.abs(angleOpen - angleClose) < 5) {
+      alert("動きが小さすぎます。しっかり動かしてください。");
       setupCalib('close');
       return;
     }
@@ -373,23 +379,31 @@ function initPanels() {
 function runGame() {
   frameCountVal++;
   
-  // 1. スイング判定
-  let ratio = map(thumbDistMm, distClose, distOpen, 0, 1);
+  // 1. スイング判定 (角度ベース)
+  let ratio = map(thumbAngle, angleClose, angleOpen, 0, 1);
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
 
-  // 「閉じた状態(0.5未満)から開いた(0.5以上)」瞬間だけヒット
+  // トリガー判定: 閾値0.5をまたいだ瞬間
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
+  // 【修正】スイング有効時間の導入
   if(swingTrigger) {
+    swingActiveTimer = 15; // 15フレーム(約0.25〜0.5秒)だけ当たり判定を残す
     const ind = document.getElementById('swing-indicator');
     ind.classList.add('active');
-    setTimeout(()=>ind.classList.remove('active'), 200);
+    setTimeout(()=>ind.classList.remove('active'), 250);
   }
+  if(swingActiveTimer > 0) {
+    swingActiveTimer--;
+  }
+
+  // ヒット可能状態かどうか
+  let isBatActive = (swingActiveTimer > 0);
 
   drawGauge();
 
-  // 2. レベル管理 (500ptごとにLvアップ)
+  // 2. レベル管理
   let calcLevel = Math.floor(score / 500) + 1;
   if (calcLevel > level) {
     level = calcLevel;
@@ -403,7 +417,6 @@ function runGame() {
   if(frameCountVal % spawnRate === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
-    // ボール速度
     let speedBase = 70; 
     let travelFrames = Math.max(15, speedBase - (level * 3));
 
@@ -423,9 +436,11 @@ function runGame() {
     
     fill(255); stroke(0); circle(b.x, b.y, 20);
     
-    let inZone = abs(b.x - hitZone) < 60;
+    // 【修正】当たり判定の緩和
+    // hitZoneから半径70px以内(広め) かつ スイング有効時間内
+    let inZone = abs(b.x - hitZone) < 70;
     
-    if(!b.hit && b.active && inZone && swingTrigger) {
+    if(!b.hit && b.active && inZone && isBatActive) {
       b.hit = true;
       let aim = 0;
       if(batSwing > 0.75) aim = 2; else if(batSwing > 0.5) aim = 1;
@@ -446,10 +461,7 @@ function runGame() {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
           p.active=false; b.active=false; 
-          score+=100; 
-          checkScorePraise(); // 褒めチェック
-          updateHUD(); 
-          break;
+          score+=100; checkScorePraise(); updateHUD(); break;
         }
       }
     }
@@ -505,7 +517,8 @@ function drawGauge() {
   let y = height/2; let h = 200;
   fill(100, 150); rect(x-5, y-h/2, 10, h);
   let cy = map(batSwing, 0, 1, y+h/2, y-h/2);
-  if(prevBatSwing < 0.5 && batSwing >= 0.5) fill(255, 255, 0); else fill(0, 255, 0);
+  // 有効時間内なら黄色く光る
+  if(swingActiveTimer > 0) fill(255, 255, 0); else fill(0, 255, 0);
   circle(x, cy, 20);
   stroke(255); line(x-10, y-h/6, x+10, y-h/6); line(x-10, y+h/6, x+10, y+h/6);
   stroke(255,0,0); line(x-15, y, x+15, y); 
