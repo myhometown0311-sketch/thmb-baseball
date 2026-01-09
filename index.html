@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Final</title>
+<title>Thumb Rehab Final v2</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -128,15 +128,13 @@
     
     <div class="instructions">
       <span class="step-num">手順1</span> プレイする手を選んでスタート<br>
-      
-      <span class="step-num">手順2</span> 手を✊️の形にして、カメラに向けてセットしてください。<br>
-      その後、測定モードで「グー」と「パー」の<strong>角度</strong>を登録します<br>
-      <span class="step-num">手順3</span> ゲーム開始！<br>
+      <span class="step-num">手順2</span> 手を✊️の形にして、カメラに向けてセットして下さい。<br>
+      <span class="step-num">手順3</span> 親指の可動域を測定します。<br>
+      <span class="step-num">手順4</span> ゲーム開始！<br>
       &nbsp;&nbsp;● <strong>待つ</strong>：親指を閉じる<br>
       &nbsp;&nbsp;● <strong>打つ</strong>：ボールに合わせてパッと開く！<br>
       <span style="color:#ffeb3b; font-size:11px;">※ボールは1球ずつ来ます。焦らず狙いましょう。</span>
     </div>
-
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
     <button class="btn" onclick="initSystem('left')">左手でスタート</button>
   </div>
@@ -378,7 +376,7 @@ function runGame() {
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
 
-  // トリガー判定: 閾値0.5をまたいだ瞬間
+  // トリガー判定
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
   if(swingTrigger) {
@@ -405,7 +403,7 @@ function runGame() {
   if(balls.length === 0 && frameCountVal % 60 === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
-    // 速度 (数字が大きいほど遅い)
+    // 速度
     let speedBase = 70; 
     let travelFrames = Math.max(15, speedBase - (level * 5));
 
@@ -456,7 +454,7 @@ function runGame() {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
           p.active=false; b.active=false; 
           score+=100; 
-          checkScorePraise(); // 褒めチェック
+          checkScorePraise(); 
           updateHUD(); 
           break;
         }
@@ -466,7 +464,7 @@ function runGame() {
     // 画面外
     if(b.x<-100 || b.x>width+100 || b.y<-100 || b.y>height+100) {
       if(!b.hit && b.active) {
-        lives--; combo = 0; // ミスでコンボリセット
+        lives--; combo = 0; 
         updateHUD();
         if(lives<=0) {
           appState=3; 
