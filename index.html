@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Final v2</title>
+<title>Thumb Rehab Pro</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -124,7 +124,7 @@
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab</h1>
+    <h1>Thumb Rehab Pro</h1>
     
     <div class="instructions">
       <span class="step-num">手順1</span> プレイする手を選んでスタート<br>
@@ -133,8 +133,9 @@
       <span class="step-num">手順4</span> ゲーム開始！<br>
       &nbsp;&nbsp;● <strong>待つ</strong>：親指を閉じる<br>
       &nbsp;&nbsp;● <strong>打つ</strong>：ボールに合わせてパッと開く！<br>
-      <span style="color:#ffeb3b; font-size:11px;">※ボールは1球ずつ来ます。焦らず狙いましょう。</span>
+      <span style="color:#ffeb3b; font-size:11px;">※Lv.9からは変化球が来ます！よく見て！</span>
     </div>
+
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
     <button class="btn" onclick="initSystem('left')">左手でスタート</button>
   </div>
@@ -163,7 +164,7 @@ let appState = 0; // 0:Menu, 1:Calib, 2:Game
 
 // 手のデータ
 let landmarks = null;
-let thumbAngle = 0; // 角度(度)
+let thumbAngle = 0;
 let angleClose = 0; 
 let angleOpen = 0;
 
@@ -183,15 +184,9 @@ let swingActiveTimer = 0;
 
 // 褒め言葉リスト
 const praiseMessages = [
-  "ナイス親指！", 
-  "素晴らしい動き！", 
-  "短母指伸筋が喜んでます！", 
-  "その調子！", 
-  "リハビリの達人！", 
-  "完璧なタイミング！", 
-  "美しい外転運動！", 
-  "神業です！", 
-  "アメージング！"
+  "ナイス親指！", "素晴らしい動き！", "短母指伸筋が喜んでます！", 
+  "その調子！", "リハビリの達人！", "完璧なタイミング！", 
+  "美しい外転運動！", "神業です！", "アメージング！"
 ];
 let nextPraiseScore = 1000;
 
@@ -250,7 +245,6 @@ function onResults(results) {
   }
 }
 
-// 角度計算ロジック
 function calcHand() {
   if(!landmarks) return;
   let w = width; let h = height;
@@ -376,7 +370,6 @@ function runGame() {
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
 
-  // トリガー判定
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
   if(swingTrigger) {
@@ -403,13 +396,39 @@ function runGame() {
   if(balls.length === 0 && frameCountVal % 60 === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
-    // 速度
+    
+    // ▼▼▼ 球種ロジック ▼▼▼
+    let pitchType = 'straight';
+    let curveFactor = 0;
+    let dragFactor = 1.0;
+
+    // Lv.9以上で変化球解禁
+    if (level >= 9) {
+        let r = random();
+        if (r < 0.35) pitchType = 'curve';
+        else if (r < 0.6) pitchType = 'changeup';
+    }
+
     let speedBase = 70; 
-    let travelFrames = Math.max(15, speedBase - (level * 5));
+    let travelFrames = Math.max(15, speedBase - (level * 3)); // 速さ
+
+    // 変化球ごとのパラメータ設定
+    if (pitchType === 'curve') {
+        // カーブ: 最初外側に膨らみ、後で戻る
+        // 手元で曲げるための加速度を設定
+        curveFactor = isRightHand ? 0.3 : -0.3; // 簡易的なY軸変化
+    } else if (pitchType === 'changeup') {
+        // チェンジアップ: 出だし速く、途中から急減速
+        travelFrames = Math.max(30, travelFrames * 1.5); // 到達時間を遅くする
+    }
 
     balls.push({
       x:sx, y:height*0.6, 
-      vx:(tx-sx)/travelFrames, vy:0, 
+      vx:(tx-sx)/travelFrames, 
+      vy: (pitchType==='curve' ? (isRightHand ? -3 : 3) : 0), // カーブは最初外へ
+      ay: (pitchType==='curve' ? (isRightHand ? 0.1 : -0.1) : 0), // 加速度で戻す
+      type: pitchType,
+      drag: (pitchType==='changeup' ? 0.96 : 1.0), // 減速係数
       active:true, hit:false
     });
   }
@@ -419,8 +438,18 @@ function runGame() {
   
   for(let i=balls.length-1; i>=0; i--){
     let b = balls[i];
-    b.x += b.vx; b.y += b.vy;
+
+    // 移動更新
+    b.x += b.vx; 
+    b.y += b.vy;
     
+    // 物理演算（変化球用）
+    if (!b.hit) {
+        b.vy += b.ay || 0;     // カーブの曲がり
+        b.vx *= b.drag || 1.0; // チェンジアップの減速
+    }
+    
+    // 描画 (球種で少し色を変える？今は白統一で難易度維持)
     fill(255); stroke(0); circle(b.x, b.y, 20);
     
     let inZone = abs(b.x - hitZone) < 70;
@@ -441,7 +470,6 @@ function runGame() {
       let ballSpeed = 20 + level;
       b.vx = (dx/len)*ballSpeed; b.vy = (dy/len)*ballSpeed;
 
-      // コンボ処理
       combo++;
       if (combo > 0 && combo % 10 === 0) {
         showPraise("イイじゃん！👍️");
@@ -453,15 +481,11 @@ function runGame() {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
           p.active=false; b.active=false; 
-          score+=100; 
-          checkScorePraise(); 
-          updateHUD(); 
-          break;
+          score+=100; checkScorePraise(); updateHUD(); break;
         }
       }
     }
     
-    // 画面外
     if(b.x<-100 || b.x>width+100 || b.y<-100 || b.y>height+100) {
       if(!b.hit && b.active) {
         lives--; combo = 0; 
