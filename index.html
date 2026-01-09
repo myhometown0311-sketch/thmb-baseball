@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Angle</title>
+<title>Thumb Rehab Perfect</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -69,6 +69,7 @@
   }
   #lives-display { font-size: 24px; margin-bottom: 5px; }
   #score-display { font-size: 20px; font-weight: bold; color: #fff; }
+  #combo-display { font-size: 16px; color: #00ff00; margin-top: 2px; font-weight: bold; } /* コンボ表示 */
   #level-display { font-size: 18px; color: #ffeb3b; margin-top: 2px; }
 
   /* ROM (角度) 表示 */
@@ -111,6 +112,7 @@
 <div id="hud-top">
   <div id="lives-display">❤️❤️❤️</div>
   <div id="score-display">Score: 0</div>
+  <div id="combo-display">0 Combo</div>
   <div id="level-display">Lv. 1</div>
 </div>
 
@@ -120,15 +122,15 @@
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab (Angle)</h1>
+    <h1>Thumb Rehab (Complete)</h1>
     
     <div class="instructions">
       <span class="step-num">手順1</span> プレイする手を選んでスタート<br>
-      <span class="step-num">手順2</span> 測定モードで「グー(閉じる)」と「パー(開く)」の<strong>角度</strong>を登録<br>
+      <span class="step-num">手順2</span> 測定モードで「グー」と「パー」の<strong>角度</strong>を登録<br>
       <span class="step-num">手順3</span> ゲーム開始！<br>
-      &nbsp;&nbsp;● <strong>基本</strong>：親指を閉じてボールを待つ<br>
-      &nbsp;&nbsp;● <strong>打撃</strong>：タイミングよく開く！<br>
-      <span style="color:#ffeb3b; font-size:11px;">※振り遅れても少しの間は当たります！</span>
+      &nbsp;&nbsp;● <strong>待つ</strong>：親指を閉じる<br>
+      &nbsp;&nbsp;● <strong>打つ</strong>：ボールに合わせてパッと開く！<br>
+      <span style="color:#ffeb3b; font-size:11px;">※ボールは1球ずつ来ます。焦らず狙いましょう。</span>
     </div>
 
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
@@ -169,12 +171,13 @@ let panels = [];
 let score = 0;
 let lives = 3;
 let level = 1;
+let combo = 0; // 【追加】コンボ数
 
 // スイング制御
 let batSwing = 0;     
 let prevBatSwing = 0; 
 let frameCountVal = 0;
-let swingActiveTimer = 0; // 【修正】スイング有効時間
+let swingActiveTimer = 0;
 
 // 褒め言葉リスト
 const praiseMessages = [
@@ -186,8 +189,7 @@ const praiseMessages = [
   "完璧なタイミング！", 
   "美しい外転運動！", 
   "神業です！", 
-  "アメージング！",
-  "筋肉が躍動してます！"
+  "アメージング！"
 ];
 let nextPraiseScore = 1000;
 
@@ -246,39 +248,32 @@ function onResults(results) {
   }
 }
 
-// 【修正】角度計算ロジック
+// 角度計算ロジック
 function calcHand() {
   if(!landmarks) return;
   let w = width; let h = height;
 
-  // Video CSS反転対応のためX反転
+  // X反転 (Video CSS対応)
   let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h}; // 手首
-  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; // 人差し指基部
+  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; // 人差指基部
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h}; // 親指先
 
-  // ベクトル計算
-  // v1: 手首 -> 人差し指 (基準線)
   let v1 = {x: p5.x - p0.x, y: p5.y - p0.y};
-  // v2: 手首 -> 親指 (動く線)
   let v2 = {x: p4.x - p0.x, y: p4.y - p0.y};
 
-  // 内積と大きさから角度を求める
   let dot = v1.x * v2.x + v1.y * v2.y;
   let mag1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y);
   let mag2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y);
   
-  if (mag1 * mag2 === 0) return; // エラー回避
+  if (mag1 * mag2 === 0) return; 
 
   let cosTheta = dot / (mag1 * mag2);
-  // 誤差修正
   cosTheta = Math.max(-1, Math.min(1, cosTheta));
-  
   let rad = Math.acos(cosTheta);
-  let deg = Math.floor(rad * (180 / Math.PI)); // 度数法に変換
+  let deg = Math.floor(rad * (180 / Math.PI));
 
   thumbAngle = deg;
 
-  // UI更新
   if(appState===1) document.getElementById('calib-val').innerText = thumbAngle + "°";
   document.getElementById('hud-rom').innerText = thumbAngle + "°";
 }
@@ -302,12 +297,8 @@ function drawSkeleton() {
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
   
-  // 角度を示す線
-  stroke(100, 200, 255, 150); strokeWeight(4);
-  line(p0.x, p0.y, p5.x, p5.y); // 基準
-  stroke(255, 100, 100, 200);
-  line(p0.x, p0.y, p4.x, p4.y); // 親指
-
+  stroke(100, 200, 255, 150); strokeWeight(4); line(p0.x, p0.y, p5.x, p5.y); 
+  stroke(255, 100, 100, 200); line(p0.x, p0.y, p4.x, p4.y); 
   fill(255, 0, 0); noStroke(); circle(p4.x, p4.y, 15);
 }
 
@@ -336,9 +327,8 @@ function nextCalib() {
     setupCalib('open');
   } else {
     angleOpen = thumbAngle;
-    // 角度差チェック (5度以上)
     if(Math.abs(angleOpen - angleClose) < 5) {
-      alert("動きが小さすぎます。しっかり動かしてください。");
+      alert("動きが小さすぎます。");
       setupCalib('close');
       return;
     }
@@ -354,7 +344,7 @@ function startGame() {
   document.getElementById('hud-rom').style.display = 'block';
   document.getElementById('swing-indicator').style.display = 'block';
   
-  score = 0; lives = 3; level = 1;
+  score = 0; lives = 3; level = 1; combo = 0;
   balls = []; panels = [];
   nextPraiseScore = 1000;
   
@@ -379,26 +369,20 @@ function initPanels() {
 function runGame() {
   frameCountVal++;
   
-  // 1. スイング判定 (角度ベース)
+  // 1. スイング判定
   let ratio = map(thumbAngle, angleClose, angleOpen, 0, 1);
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
-
-  // トリガー判定: 閾値0.5をまたいだ瞬間
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
-  // 【修正】スイング有効時間の導入
   if(swingTrigger) {
-    swingActiveTimer = 15; // 15フレーム(約0.25〜0.5秒)だけ当たり判定を残す
+    swingActiveTimer = 15;
     const ind = document.getElementById('swing-indicator');
     ind.classList.add('active');
     setTimeout(()=>ind.classList.remove('active'), 250);
   }
-  if(swingActiveTimer > 0) {
-    swingActiveTimer--;
-  }
+  if(swingActiveTimer > 0) swingActiveTimer--;
 
-  // ヒット可能状態かどうか
   let isBatActive = (swingActiveTimer > 0);
 
   drawGauge();
@@ -411,14 +395,14 @@ function runGame() {
     showPraise(`LEVEL UP! Lv.${level}`);
   }
 
-  // 3. ボール生成
-  let spawnRate = Math.max(30, 90 - (level * 5));
-  
-  if(frameCountVal % spawnRate === 0) {
+  // 3. ボール生成 (画面にボールがない時だけ投げる)
+  // ＆ 前回のボール消失から少し間隔をあける(60f)
+  if(balls.length === 0 && frameCountVal % 60 === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
+    // 速度 (数字が大きいほど遅い)
     let speedBase = 70; 
-    let travelFrames = Math.max(15, speedBase - (level * 3));
+    let travelFrames = Math.max(15, speedBase - (level * 5));
 
     balls.push({
       x:sx, y:height*0.6, 
@@ -436,8 +420,6 @@ function runGame() {
     
     fill(255); stroke(0); circle(b.x, b.y, 20);
     
-    // 【修正】当たり判定の緩和
-    // hitZoneから半径70px以内(広め) かつ スイング有効時間内
     let inZone = abs(b.x - hitZone) < 70;
     
     if(!b.hit && b.active && inZone && isBatActive) {
@@ -455,6 +437,13 @@ function runGame() {
       
       let ballSpeed = 20 + level;
       b.vx = (dx/len)*ballSpeed; b.vy = (dy/len)*ballSpeed;
+
+      // 【追加】コンボ処理
+      combo++;
+      if (combo > 0 && combo % 10 === 0) {
+        showPraise("イイじゃん！👍️");
+      }
+      updateHUD();
     }
     
     if(b.hit && b.active) {
@@ -466,9 +455,11 @@ function runGame() {
       }
     }
     
+    // 画面外
     if(b.x<-100 || b.x>width+100 || b.y<-100 || b.y>height+100) {
       if(!b.hit && b.active) {
-        lives--; updateHUD();
+        lives--; combo = 0; // ミスでコンボリセット
+        updateHUD();
         if(lives<=0) {
           appState=3; 
           document.getElementById('final-score').innerText="Score: "+score;
@@ -480,16 +471,14 @@ function runGame() {
     }
   }
 
-  // パネル
+  // パネル全クリア
   let cnt=0;
-  for(let p of panels) {
-    if(p.active) {
-      cnt++;
-      fill(0,200,0,150); stroke(255); strokeWeight(2);
-      rect(p.x, p.y, p.w, p.h);
-      fill(255); noStroke(); textAlign(CENTER,CENTER); textSize(24);
-      text(p.id, p.x+p.w/2, p.y+p.h/2);
-    }
+  for(let p of panels) if(p.active) {
+    cnt++;
+    fill(0,200,0,150); stroke(255); strokeWeight(2);
+    rect(p.x, p.y, p.w, p.h);
+    fill(255); noStroke(); textAlign(CENTER,CENTER); textSize(24);
+    text(p.id, p.x+p.w/2, p.y+p.h/2);
   }
   if(cnt===0 && panels.length>0) { score+=1000; initPanels(); checkScorePraise(); updateHUD(); }
 }
@@ -517,7 +506,6 @@ function drawGauge() {
   let y = height/2; let h = 200;
   fill(100, 150); rect(x-5, y-h/2, 10, h);
   let cy = map(batSwing, 0, 1, y+h/2, y-h/2);
-  // 有効時間内なら黄色く光る
   if(swingActiveTimer > 0) fill(255, 255, 0); else fill(0, 255, 0);
   circle(x, cy, 20);
   stroke(255); line(x-10, y-h/6, x+10, y-h/6); line(x-10, y+h/6, x+10, y+h/6);
@@ -528,6 +516,7 @@ function updateHUD() {
   let s=""; for(let i=0;i<lives;i++) s+="❤️";
   document.getElementById('lives-display').innerHTML = s;
   document.getElementById('score-display').innerText = "Score: " + score;
+  document.getElementById('combo-display').innerText = combo + " Combo!";
   document.getElementById('level-display').innerText = "Lv. " + level;
 }
 
