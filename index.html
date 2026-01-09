@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Perfect</title>
+<title>Thumb Rehab Final</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -69,7 +69,7 @@
   }
   #lives-display { font-size: 24px; margin-bottom: 5px; }
   #score-display { font-size: 20px; font-weight: bold; color: #fff; }
-  #combo-display { font-size: 16px; color: #00ff00; margin-top: 2px; font-weight: bold; } /* コンボ表示 */
+  #combo-display { font-size: 16px; color: #00ff00; margin-top: 2px; font-weight: bold; }
   #level-display { font-size: 18px; color: #ffeb3b; margin-top: 2px; }
 
   /* ROM (角度) 表示 */
@@ -109,6 +109,8 @@
 
 <video id="input_video" playsinline webkit-playsinline muted autoplay></video>
 
+<div id="debug-msg" style="display:none; position:fixed; bottom:0; background:red; color:white;"></div>
+
 <div id="hud-top">
   <div id="lives-display">❤️❤️❤️</div>
   <div id="score-display">Score: 0</div>
@@ -122,11 +124,13 @@
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab (Complete)</h1>
+    <h1>Thumb Rehab</h1>
     
     <div class="instructions">
       <span class="step-num">手順1</span> プレイする手を選んでスタート<br>
-      <span class="step-num">手順2</span> 測定モードで「グー」と「パー」の<strong>角度</strong>を登録<br>
+      
+      <span class="step-num">手順2</span> 手を✊️の形にして、カメラに向けてセットしてください。<br>
+      その後、測定モードで「グー」と「パー」の<strong>角度</strong>を登録します<br>
       <span class="step-num">手順3</span> ゲーム開始！<br>
       &nbsp;&nbsp;● <strong>待つ</strong>：親指を閉じる<br>
       &nbsp;&nbsp;● <strong>打つ</strong>：ボールに合わせてパッと開く！<br>
@@ -171,7 +175,7 @@ let panels = [];
 let score = 0;
 let lives = 3;
 let level = 1;
-let combo = 0; // 【追加】コンボ数
+let combo = 0;
 
 // スイング制御
 let batSwing = 0;     
@@ -373,6 +377,8 @@ function runGame() {
   let ratio = map(thumbAngle, angleClose, angleOpen, 0, 1);
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
+
+  // トリガー判定: 閾値0.5をまたいだ瞬間
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
   if(swingTrigger) {
@@ -395,8 +401,7 @@ function runGame() {
     showPraise(`LEVEL UP! Lv.${level}`);
   }
 
-  // 3. ボール生成 (画面にボールがない時だけ投げる)
-  // ＆ 前回のボール消失から少し間隔をあける(60f)
+  // 3. ボール生成
   if(balls.length === 0 && frameCountVal % 60 === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
@@ -438,7 +443,7 @@ function runGame() {
       let ballSpeed = 20 + level;
       b.vx = (dx/len)*ballSpeed; b.vy = (dy/len)*ballSpeed;
 
-      // 【追加】コンボ処理
+      // コンボ処理
       combo++;
       if (combo > 0 && combo % 10 === 0) {
         showPraise("イイじゃん！👍️");
@@ -450,7 +455,10 @@ function runGame() {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
           p.active=false; b.active=false; 
-          score+=100; checkScorePraise(); updateHUD(); break;
+          score+=100; 
+          checkScorePraise(); // 褒めチェック
+          updateHUD(); 
+          break;
         }
       }
     }
