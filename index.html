@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab HighPanel</title>
+<title>Thumb Rehab Complete</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -30,24 +30,34 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
 
-  /* 画面パネル */
+  /* 画面パネル共通 */
   .screen {
     background: rgba(0, 0, 0, 0.9);
     border: 2px solid #ffcc00; border-radius: 16px;
-    padding: 24px; text-align: center; width: 90%; max-width: 400px;
+    padding: 20px; text-align: center; width: 90%; max-width: 420px;
     pointer-events: auto; display: none;
     box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+    max-height: 90vh; overflow-y: auto; /* 縦長画面対応 */
   }
   .screen.active { display: block; }
 
   h1 { color: #ffeb3b; margin: 0 0 10px 0; font-size: 22px; }
-  p { font-size: 14px; color: #ccc; margin-bottom: 20px; line-height: 1.5; }
+  h2 { color: #00e5ff; margin: 0 0 10px 0; font-size: 18px; }
+  p { font-size: 14px; color: #ccc; margin-bottom: 15px; line-height: 1.5; }
+
+  /* 遊び方説明エリア */
+  .instructions {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 8px; padding: 10px; margin-bottom: 15px;
+    text-align: left; font-size: 13px; line-height: 1.6; color: #eee;
+  }
+  .step-num { color: #ffeb3b; font-weight: bold; margin-right: 5px; }
 
   .btn {
     width: 100%; padding: 16px; font-size: 18px; font-weight: bold;
     background: linear-gradient(135deg, #ffeb3b, #fbc02d);
     color: #000; border: none; border-radius: 50px;
-    margin-top: 10px; cursor: pointer;
+    margin-top: 5px; cursor: pointer;
     box-shadow: 0 4px 10px rgba(255, 235, 59, 0.3);
   }
   .btn:active { transform: scale(0.96); }
@@ -59,7 +69,7 @@
     font-size: 12px; display: none; padding: 5px; z-index: 999;
   }
 
-  /* HUD (ライフ・スコア・レベル) */
+  /* HUD */
   #hud-top {
     position: fixed; top: 15px; left: 15px; z-index: 50;
     display: none; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
@@ -68,7 +78,6 @@
   #score-display { font-size: 20px; font-weight: bold; color: #fff; }
   #level-display { font-size: 18px; color: #ffeb3b; margin-top: 2px; }
 
-  /* ROM表示 */
   #hud-rom { 
     position: fixed; top: 15px; right: 15px; font-size: 14px; 
     color: cyan; z-index: 50; display: none; 
@@ -76,7 +85,7 @@
     border:1px solid cyan;
   }
 
-  /* 褒め言葉演出 (オーバーレイ) */
+  /* 褒め言葉演出 */
   #praise-overlay {
     position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
     z-index: 200; pointer-events: none;
@@ -85,9 +94,7 @@
     text-align: center; white-space: nowrap;
     opacity: 0; transition: opacity 0.5s, transform 0.5s;
   }
-  #praise-overlay.show {
-    opacity: 1; transform: translate(-50%, -50%) scale(1.2);
-  }
+  #praise-overlay.show { opacity: 1; transform: translate(-50%, -50%) scale(1.2); }
 
   /* スイングインジケーター */
   #swing-indicator {
@@ -121,14 +128,23 @@
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab (Adjusted)</h1>
-    <p>親指をしっかり開いて打とう！<br>パネル位置を高めに設定しました。</p>
+    <h1>Thumb Rehab</h1>
+    
+    <div class="instructions">
+      <span class="step-num">手順1</span> プレイする手を選んでスタート<br>
+      <span class="step-num">手順2</span> 測定モードで「グー(閉じる)」と「パー(開く)」の可動域を登録<br>
+      <span class="step-num">手順3</span> ゲーム開始！<br>
+      &nbsp;&nbsp;● <strong>待つ時</strong>：親指を閉じて構える<br>
+      &nbsp;&nbsp;● <strong>打つ時</strong>：ボールに合わせてパッと開く！<br>
+      <span style="color:#ffeb3b; font-size:11px;">※大きく開くと上段、小さく開くと下段に飛びます</span>
+    </div>
+
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
     <button class="btn" onclick="initSystem('left')">左手でスタート</button>
   </div>
 
   <div id="screen-calib" class="screen">
-    <h2 id="calib-title" style="color:cyan; margin:0;">測定：閉じる</h2>
+    <h2 id="calib-title">測定：閉じる</h2>
     <p id="calib-msg">親指を閉じて（グー）<br>ボタンを押してください</p>
     <div id="calib-val" style="font-size:32px; color:cyan; margin:20px;">0 mm</div>
     <button class="btn" onclick="nextCalib()">記録</button>
@@ -167,11 +183,11 @@ let batSwing = 0;
 let prevBatSwing = 0; 
 let frameCountVal = 0;
 
-// 褒め言葉リスト
+// 褒め言葉リスト (1000pt毎にランダム表示)
 const praiseMessages = [
   "ナイス親指！", 
   "素晴らしい動き！", 
-  "しっかり開けてます！", 
+  "短母指伸筋が喜んでます！", 
   "その調子！", 
   "リハビリの達人！", 
   "完璧なタイミング！", 
@@ -347,13 +363,7 @@ function initPanels() {
   for(let r=0; r<3; r++){
     for(let c=0; c<3; c++){
       let id = (r*3)+c+1;
-      
-      // 【変更点】パネルのY座標計算
-      // 以前: height * 0.7 - ... (下寄り)
-      // 今回: height * 0.55 - ... (上寄り)
-      // これにより、パネルが画面の上半分に集中します。
       let y = height*0.55 - (r*(ph+10)); 
-      
       let x = sx + c*(pw+5);
       panels.push({id:id, x:x, y:y, w:pw, h:ph, active:true});
     }
@@ -363,11 +373,12 @@ function initPanels() {
 function runGame() {
   frameCountVal++;
   
-  // スイング判定
+  // 1. スイング判定
   let ratio = map(thumbDistMm, distClose, distOpen, 0, 1);
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
 
+  // 「閉じた状態(0.5未満)から開いた(0.5以上)」瞬間だけヒット
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
   if(swingTrigger) {
@@ -378,7 +389,7 @@ function runGame() {
 
   drawGauge();
 
-  // レベル管理
+  // 2. レベル管理 (500ptごとにLvアップ)
   let calcLevel = Math.floor(score / 500) + 1;
   if (calcLevel > level) {
     level = calcLevel;
@@ -386,17 +397,13 @@ function runGame() {
     showPraise(`LEVEL UP! Lv.${level}`);
   }
 
-  // ボール生成
+  // 3. ボール生成
   let spawnRate = Math.max(30, 90 - (level * 5));
   
   if(frameCountVal % spawnRate === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
-    
-    // 【変更点】ボール速度 (数字が大きいほど遅い)
-    // 以前: 40程度
-    // 今回: 70スタート (かなりゆっくり)
-    // レベルが上がるとこの数字が小さくなり、速くなる
+    // ボール速度
     let speedBase = 70; 
     let travelFrames = Math.max(15, speedBase - (level * 3));
 
@@ -407,7 +414,7 @@ function runGame() {
     });
   }
 
-  // ボール処理
+  // 4. ボール処理
   let hitZone = isRightHand ? width*0.8 : width*0.2;
   
   for(let i=balls.length-1; i>=0; i--){
@@ -439,7 +446,10 @@ function runGame() {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
           p.active=false; b.active=false; 
-          score+=100; checkScorePraise(); updateHUD(); break;
+          score+=100; 
+          checkScorePraise(); // 褒めチェック
+          updateHUD(); 
+          break;
         }
       }
     }
