@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab LevelUp</title>
+<title>Thumb Rehab HighPanel</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -121,8 +121,8 @@
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab LevelUp</h1>
-    <p>徐々に難しくなるリハビリゲーム<br>1000pt毎に褒めてくれます！</p>
+    <h1>Thumb Rehab (Adjusted)</h1>
+    <p>親指をしっかり開いて打とう！<br>パネル位置を高めに設定しました。</p>
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
     <button class="btn" onclick="initSystem('left')">左手でスタート</button>
   </div>
@@ -167,11 +167,11 @@ let batSwing = 0;
 let prevBatSwing = 0; 
 let frameCountVal = 0;
 
-// 褒め言葉リスト (1000pt毎にランダム表示)
+// 褒め言葉リスト
 const praiseMessages = [
   "ナイス親指！", 
   "素晴らしい動き！", 
-  "短母指伸筋が喜んでます！", 
+  "しっかり開けてます！", 
   "その調子！", 
   "リハビリの達人！", 
   "完璧なタイミング！", 
@@ -180,7 +180,7 @@ const praiseMessages = [
   "アメージング！",
   "筋肉が躍動してます！"
 ];
-let nextPraiseScore = 1000; // 次に褒めるスコア
+let nextPraiseScore = 1000;
 
 // --- エラー表示 ---
 function logError(msg) {
@@ -347,7 +347,13 @@ function initPanels() {
   for(let r=0; r<3; r++){
     for(let c=0; c<3; c++){
       let id = (r*3)+c+1;
-      let y = height*0.7 - (r*(ph+10));
+      
+      // 【変更点】パネルのY座標計算
+      // 以前: height * 0.7 - ... (下寄り)
+      // 今回: height * 0.55 - ... (上寄り)
+      // これにより、パネルが画面の上半分に集中します。
+      let y = height*0.55 - (r*(ph+10)); 
+      
       let x = sx + c*(pw+5);
       panels.push({id:id, x:x, y:y, w:pw, h:ph, active:true});
     }
@@ -357,12 +363,11 @@ function initPanels() {
 function runGame() {
   frameCountVal++;
   
-  // 1. スイング判定
+  // スイング判定
   let ratio = map(thumbDistMm, distClose, distOpen, 0, 1);
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
 
-  // 「閉じた状態(0.5未満)から開いた(0.5以上)」瞬間だけヒット
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
   if(swingTrigger) {
@@ -373,7 +378,7 @@ function runGame() {
 
   drawGauge();
 
-  // 2. レベル管理 (500ptごとにLvアップ)
+  // レベル管理
   let calcLevel = Math.floor(score / 500) + 1;
   if (calcLevel > level) {
     level = calcLevel;
@@ -381,25 +386,28 @@ function runGame() {
     showPraise(`LEVEL UP! Lv.${level}`);
   }
 
-  // 3. ボール生成
-  // レベルが上がると間隔が短くなる (最短30フレーム)
+  // ボール生成
   let spawnRate = Math.max(30, 90 - (level * 5));
   
   if(frameCountVal % spawnRate === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
-    // レベルが上がると速度アップ
-    let speedBase = 40; 
-    let speed = Math.max(10, speedBase - (level * 2)); // 値が小さいほど速い(到達フレーム数)
+    
+    // 【変更点】ボール速度 (数字が大きいほど遅い)
+    // 以前: 40程度
+    // 今回: 70スタート (かなりゆっくり)
+    // レベルが上がるとこの数字が小さくなり、速くなる
+    let speedBase = 70; 
+    let travelFrames = Math.max(15, speedBase - (level * 3));
 
     balls.push({
       x:sx, y:height*0.6, 
-      vx:(tx-sx)/speed, vy:0, 
+      vx:(tx-sx)/travelFrames, vy:0, 
       active:true, hit:false
     });
   }
 
-  // 4. ボール処理
+  // ボール処理
   let hitZone = isRightHand ? width*0.8 : width*0.2;
   
   for(let i=balls.length-1; i>=0; i--){
@@ -422,8 +430,8 @@ function runGame() {
       let tx = t ? t.x+t.w/2 : (isRightHand?0:width);
       let ty = t ? t.y+t.h/2 : 0;
       let dx = tx-b.x; let dy = ty-b.y; let len = sqrt(dx*dx+dy*dy);
-      // 打球速度も少し速く
-      let ballSpeed = 25 + level;
+      
+      let ballSpeed = 20 + level;
       b.vx = (dx/len)*ballSpeed; b.vy = (dy/len)*ballSpeed;
     }
     
@@ -431,10 +439,7 @@ function runGame() {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
           p.active=false; b.active=false; 
-          score+=100; 
-          checkScorePraise(); // 褒めチェック
-          updateHUD(); 
-          break;
+          score+=100; checkScorePraise(); updateHUD(); break;
         }
       }
     }
@@ -469,7 +474,6 @@ function runGame() {
 
 function checkScorePraise() {
   if (score >= nextPraiseScore) {
-    // ランダムメッセージ選択
     let msg = praiseMessages[Math.floor(random(praiseMessages.length))];
     showPraise(msg);
     nextPraiseScore += 1000;
@@ -480,15 +484,10 @@ function showPraise(text) {
   const el = document.getElementById('praise-overlay');
   el.innerText = text;
   el.classList.add('show');
-  
-  // 色をランダムにする
   let colors = ["#ff00de", "#00ff00", "#00e5ff", "#ffeb3b", "#ff5252"];
   let c = colors[Math.floor(random(colors.length))];
   el.style.textShadow = `0 0 10px ${c}, 0 0 20px ${c}`;
-
-  setTimeout(() => {
-    el.classList.remove('show');
-  }, 2000);
+  setTimeout(() => { el.classList.remove('show'); }, 2000);
 }
 
 function drawGauge() {
