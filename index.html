@@ -3,60 +3,57 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Plan B</title>
+<title>Thumb Rehab Fixed</title>
 <style>
-  /* 全体レイアウト */
+  /* --- レイアウト設定 --- */
   body {
     margin: 0; padding: 0; overflow: hidden;
     background-color: #000; font-family: sans-serif;
     color: white; touch-action: none;
   }
 
-  /* --- レイヤー構造 --- */
-  
-  /* レイヤー1 (最奥): カメラ映像 */
-  /* ブラウザ標準のプレイヤーをそのまま使うことで表示トラブルを回避 */
+  /* 映像表示用 (背面) */
   #input_video {
     position: fixed; top: 0; left: 0; 
     width: 100%; height: 100%;
-    object-fit: cover; /* 画面いっぱいに広げる */
-    z-index: 0;
-    transform: scaleX(-1); /* 鏡のように反転 */
+    object-fit: cover; z-index: 0;
+    transform: scaleX(-1); /* 鏡反転 */
   }
 
-  /* レイヤー2 (中間): ゲーム描画キャンバス */
+  /* ゲーム描画用 (前面) */
   canvas {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 10;
   }
 
-  /* レイヤー3 (最前面): UI操作パネル */
+  /* UIレイヤー */
   #ui-layer {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 100; pointer-events: none;
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
 
-  /* パネルデザイン */
+  /* パネルスタイル */
   .screen {
     background: rgba(0, 0, 0, 0.85);
     border: 2px solid #ffcc00; border-radius: 15px;
     padding: 20px; text-align: center;
     width: 90%; max-width: 400px;
     pointer-events: auto; display: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
   }
   .screen.active { display: block; }
 
   h1 { color: #ffeb3b; font-size: 20px; margin: 0 0 10px 0; }
-  p { font-size: 14px; color: #ccc; }
-
+  p { font-size: 14px; color: #ccc; margin-bottom: 20px; }
   .btn {
     width: 100%; padding: 15px; font-size: 18px; font-weight: bold;
     background: #ffeb3b; color: #000; border: none; border-radius: 30px;
-    margin-top: 10px; cursor: pointer;
+    margin-top: 5px; cursor: pointer;
   }
+  .btn:active { transform: scale(0.95); }
 
-  /* エラー表示 */
+  /* エラーログ */
   #debug-msg {
     position: fixed; bottom: 0; left: 0; width: 100%;
     background: rgba(255,0,0,0.8); color: white;
@@ -64,8 +61,21 @@
   }
 
   /* HUD */
-  #hud-lives { position: fixed; top: 10px; left: 10px; font-size: 20px; z-index: 50; display: none; }
-  #hud-rom { position: fixed; top: 10px; right: 10px; font-size: 14px; color: cyan; z-index: 50; display: none; background:rgba(0,0,0,0.5); padding:5px; }
+  #hud-lives { position: fixed; top: 15px; left: 15px; font-size: 24px; z-index: 50; display: none; text-shadow: 0 2px 5px black; }
+  #hud-rom { 
+    position: fixed; top: 15px; right: 15px; font-size: 14px; 
+    color: cyan; z-index: 50; display: none; 
+    background:rgba(0,0,0,0.6); padding:5px 10px; border-radius:5px; 
+    border:1px solid cyan;
+  }
+  /* スイング判定のインジケーター */
+  #swing-indicator {
+    position: fixed; top: 50px; right: 15px; width: 20px; height: 20px;
+    border-radius: 50%; background: #333; border: 2px solid #555;
+    z-index: 50; display: none;
+  }
+  #swing-indicator.active { background: #00ff00; box-shadow: 0 0 10px #00ff00; border-color: #fff; }
+
 </style>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.min.js"></script>
@@ -79,24 +89,25 @@
 <div id="debug-msg"></div>
 <div id="hud-lives">❤️❤️❤️</div>
 <div id="hud-rom">ROM: 0mm</div>
+<div id="swing-indicator"></div>
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab (Plan B)</h1>
-    <p>オーバーレイ方式による起動モード<br>カメラ許可が必要です</p>
+    <h1>Thumb Rehab (Swing Fix)</h1>
+    <p>親指を開く動作でタイミングよく<br>ボールを打ってください</p>
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
     <button class="btn" onclick="initSystem('left')">左手でスタート</button>
   </div>
 
   <div id="screen-calib" class="screen">
-    <h2 id="calib-title" style="color:cyan; margin:0;">閉じる測定</h2>
-    <p id="calib-msg">親指を閉じてボタンを押してください</p>
+    <h2 id="calib-title" style="color:cyan; margin:0;">測定：閉じる</h2>
+    <p id="calib-msg">親指を閉じて（グー）<br>ボタンを押してください</p>
     <div id="calib-val" style="font-size:30px; color:cyan; margin:15px;">0 mm</div>
     <button class="btn" onclick="nextCalib()">記録</button>
   </div>
 
   <div id="screen-result" class="screen">
-    <h1 style="color:#ff5555;">終了</h1>
+    <h1 style="color:#ff5555;">Game Over</h1>
     <p id="final-score">Score: 0</p>
     <button class="btn" onclick="location.reload()">タイトルへ</button>
   </div>
@@ -119,8 +130,12 @@ let balls = [];
 let panels = [];
 let score = 0;
 let lives = 3;
-let batSwing = 0;
 let frameCountVal = 0;
+
+// スイング判定用変数 (修正箇所)
+let batSwing = 0;       // 現在の開き具合 (0.0〜1.0)
+let prevBatSwing = 0;   // 前フレームの開き具合
+let isSwinging = false; // 今まさに振った瞬間か？
 
 // --- エラーハンドリング ---
 function logError(msg) {
@@ -130,59 +145,47 @@ function logError(msg) {
   console.error(msg);
 }
 
-// --- 初期化フロー ---
+// --- システム初期化 ---
 async function initSystem(hand) {
   isRightHand = (hand === 'right');
   
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-    alert("https接続（鍵マーク）が必要です。");
+    alert("https接続が必要です。");
     return;
   }
 
-  // ボタン変化
-  document.querySelector('#screen-menu .btn').innerText = "カメラ起動中...";
+  document.querySelector('#screen-menu .btn').innerText = "起動中...";
 
   try {
-    // 1. カメラ取得 (ブラウザ標準API)
     const stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: {
-        facingMode: 'user', // インカメラ
-        width: { ideal: 640 },
-        height: { ideal: 480 }
-      }
+      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
     });
 
-    // 2. ビデオタグに直結 (Plan Bのキモ)
     videoElem.srcObject = stream;
-    
-    // 再生待機
     videoElem.onloadedmetadata = () => {
       videoElem.play();
-      initAI(); // 映像が来たらAI開始
+      initAI();
     };
 
   } catch (err) {
     logError("カメラ起動失敗: " + err.name);
-    alert("カメラが起動できませんでした。\n設定を確認してください。");
+    alert("カメラ設定を確認してください。");
   }
 }
 
-// --- MediaPipe設定 ---
 function initAI() {
   try {
     hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
       maxNumHands: 1,
-      modelComplexity: 0, // Lite
+      modelComplexity: 0,
       minDetectionConfidence: 0.5,
       minTrackingConfidence: 0.5
     });
     hands.onResults(onResults);
-    
     processVideo();
     
-    // 画面遷移
     appState = 1;
     switchScreen('screen-calib');
     setupCalib('close');
@@ -210,16 +213,8 @@ function onResults(results) {
 
 function calcHand() {
   if(!landmarks) return;
-  // Canvasサイズに基づく計算
+  // 座標変換 (videoがCSS反転されているため、Xを反転して計算)
   let w = width; let h = height;
-  
-  // 座標変換 (videoがCSSで反転されているため、ここでは論理座標として扱う)
-  // MediaPipeは 0.0-1.0 で返してくる
-  // ただし、描画時にp5.js側でも反転させる必要があるか、整合性を取る必要がある
-  // Plan Bでは videoがCSS反転、Canvasは透明。
-  // そのため、Landmark座標をそのまま使うと、左右が一致しない可能性がある。
-  // ここでは「見た目」に合わせるため、X座標を反転して計算・描画する。
-  
   let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
@@ -234,37 +229,28 @@ function calcHand() {
   document.getElementById('hud-rom').innerText = "ROM: " + thumbDistMm + "mm";
 }
 
-// --- p5.js 描画 (UIのみ描画・背景は透明) ---
+// --- p5.js ---
 function setup() {
   let cvs = createCanvas(windowWidth, windowHeight);
-  cvs.style('pointer-events', 'none'); // ゲーム画面はクリック透過
-  clear(); // 透明にする
+  cvs.style('pointer-events', 'none');
+  clear();
 }
 
 function draw() {
-  clear(); // 毎フレーム透明に戻す（ビデオが見えるように）
-  
-  // カメラ映像は videoタグが表示しているので、ここでは描画しない！
-  // これにより黒画面バグを回避
+  clear(); // 透明背景
 
   if(appState === 2) {
     runGame();
   }
 
-  // 骨格ガイド
-  if(landmarks) {
-    drawSkeleton();
-  }
+  if(landmarks) drawSkeleton();
 }
 
 function drawSkeleton() {
-  // 手のガイド表示
   let w = width; let h = height;
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
-  
-  stroke(0, 255, 255); strokeWeight(3);
-  line(p5.x, p5.y, p4.x, p4.y);
+  stroke(0, 255, 255); strokeWeight(3); line(p5.x, p5.y, p4.x, p4.y);
   fill(255, 0, 0); noStroke(); circle(p4.x, p4.y, 15);
 }
 
@@ -308,6 +294,7 @@ function startGame() {
   switchScreen(null);
   document.getElementById('hud-lives').style.display = 'block';
   document.getElementById('hud-rom').style.display = 'block';
+  document.getElementById('swing-indicator').style.display = 'block';
   
   score = 0; lives = 3; balls = []; panels = [];
   initPanels();
@@ -318,7 +305,6 @@ function initPanels() {
   panels = [];
   let pw = width*0.12; let ph = height*0.08;
   let sx = isRightHand ? width*0.1 : width*0.55;
-  
   for(let r=0; r<3; r++){
     for(let c=0; c<3; c++){
       let id = (r*3)+c+1;
@@ -332,13 +318,26 @@ function initPanels() {
 function runGame() {
   frameCountVal++;
   
-  // 操作量
+  // 1. スイング値の計算
   let ratio = map(thumbDistMm, distClose, distOpen, 0, 1);
-  batSwing = constrain(ratio, 0, 1);
+  prevBatSwing = batSwing; // 前フレームの値を保存
+  batSwing = constrain(ratio, 0, 1); // 現在の値
+
+  // 2. スイング判定 (重要修正)
+  // 「前フレームは閉じていて(0.4未満)、今フレームで開いた(0.6以上)」場合だけスイングとみなす
+  // これにより「開きっぱなし」では打てなくなる
+  let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
+  // スイングインジケーター表示（デバッグ用：振った瞬間に緑になる）
+  const ind = document.getElementById('swing-indicator');
+  if(swingTrigger) {
+    ind.classList.add('active');
+    setTimeout(()=>ind.classList.remove('active'), 200);
+  }
+
   drawGauge();
 
-  // ボール
+  // ボール生成
   if(frameCountVal % 90 === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
@@ -357,11 +356,15 @@ function runGame() {
     
     fill(255); stroke(0); circle(b.x, b.y, 20);
     
-    // ヒット
-    if(!b.hit && b.active && abs(b.x - hitZone) < 50 && batSwing > 0.3) {
+    // ヒット条件の変更：
+    // ゾーン内にいる AND 「今まさに振った(swingTrigger)」であること
+    let inZone = abs(b.x - hitZone) < 60; // 判定少し甘めに(40->60)
+    
+    if(!b.hit && b.active && inZone && swingTrigger) {
       b.hit = true;
       let aim = 0;
-      if(batSwing > 0.66) aim = 2; else if(batSwing > 0.33) aim = 1;
+      // 開き具合によって高さを変える
+      if(batSwing > 0.75) aim = 2; else if(batSwing > 0.5) aim = 1;
       
       // ターゲット検索
       let targets = panels.filter(p => p.active && Math.floor((p.id-1)/3) === aim);
@@ -371,10 +374,11 @@ function runGame() {
       let tx = t ? t.x+t.w/2 : (isRightHand?0:width);
       let ty = t ? t.y+t.h/2 : 0;
       let dx = tx-b.x; let dy = ty-b.y; let len = sqrt(dx*dx+dy*dy);
-      b.vx = (dx/len)*30; b.vy = (dy/len)*30;
+      let speed = 25;
+      b.vx = (dx/len)*speed; b.vy = (dy/len)*speed;
     }
     
-    // 破壊
+    // パネル破壊
     if(b.hit && b.active) {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
@@ -396,7 +400,7 @@ function runGame() {
     }
   }
 
-  // パネル
+  // パネル描画
   let cnt=0;
   for(let p of panels) {
     if(p.active) {
@@ -414,9 +418,21 @@ function drawGauge() {
   let x = isRightHand ? width-30 : 30;
   let y = height/2; let h = 200;
   fill(100, 150); rect(x-5, y-h/2, 10, h);
+  
   let cy = map(batSwing, 0, 1, y+h/2, y-h/2);
-  fill(0,255,0); circle(x, cy, 20);
-  stroke(255); line(x-10, y-h/6, x+10, y-h/6); line(x-10, y+h/6, x+10, y+h/6);
+  // スイングした瞬間だけ色を変える
+  if(prevBatSwing < 0.5 && batSwing >= 0.5) fill(255, 255, 0);
+  else fill(0, 255, 0);
+  
+  circle(x, cy, 20);
+  
+  stroke(255); 
+  line(x-10, y-h/6, x+10, y-h/6); // 上段境界
+  line(x-10, y+h/6, x+10, y+h/6); // 下段境界
+  
+  // スイング判定ライン(50%)
+  stroke(255, 0, 0);
+  line(x-15, y, x+15, y); 
 }
 
 function updateLives() {
