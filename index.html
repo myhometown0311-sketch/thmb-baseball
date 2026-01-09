@@ -3,27 +3,24 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Fixed</title>
+<title>Thumb Rehab LevelUp</title>
 <style>
-  /* --- レイアウト設定 --- */
+  /* --- 基本設定 --- */
   body {
     margin: 0; padding: 0; overflow: hidden;
-    background-color: #000; font-family: sans-serif;
+    background-color: #000; font-family: "Hiragino Kaku Gothic ProN", sans-serif;
     color: white; touch-action: none;
   }
 
-  /* 映像表示用 (背面) */
+  /* 映像 (背面) */
   #input_video {
-    position: fixed; top: 0; left: 0; 
-    width: 100%; height: 100%;
-    object-fit: cover; z-index: 0;
-    transform: scaleX(-1); /* 鏡反転 */
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    object-fit: cover; z-index: 0; transform: scaleX(-1);
   }
 
-  /* ゲーム描画用 (前面) */
+  /* ゲーム描画 (前面) */
   canvas {
-    position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-    z-index: 10;
+    position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
   }
 
   /* UIレイヤー */
@@ -33,25 +30,27 @@
     display: flex; flex-direction: column; align-items: center; justify-content: center;
   }
 
-  /* パネルスタイル */
+  /* 画面パネル */
   .screen {
-    background: rgba(0, 0, 0, 0.85);
-    border: 2px solid #ffcc00; border-radius: 15px;
-    padding: 20px; text-align: center;
-    width: 90%; max-width: 400px;
+    background: rgba(0, 0, 0, 0.9);
+    border: 2px solid #ffcc00; border-radius: 16px;
+    padding: 24px; text-align: center; width: 90%; max-width: 400px;
     pointer-events: auto; display: none;
-    box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.8);
   }
   .screen.active { display: block; }
 
-  h1 { color: #ffeb3b; font-size: 20px; margin: 0 0 10px 0; }
-  p { font-size: 14px; color: #ccc; margin-bottom: 20px; }
+  h1 { color: #ffeb3b; margin: 0 0 10px 0; font-size: 22px; }
+  p { font-size: 14px; color: #ccc; margin-bottom: 20px; line-height: 1.5; }
+
   .btn {
-    width: 100%; padding: 15px; font-size: 18px; font-weight: bold;
-    background: #ffeb3b; color: #000; border: none; border-radius: 30px;
-    margin-top: 5px; cursor: pointer;
+    width: 100%; padding: 16px; font-size: 18px; font-weight: bold;
+    background: linear-gradient(135deg, #ffeb3b, #fbc02d);
+    color: #000; border: none; border-radius: 50px;
+    margin-top: 10px; cursor: pointer;
+    box-shadow: 0 4px 10px rgba(255, 235, 59, 0.3);
   }
-  .btn:active { transform: scale(0.95); }
+  .btn:active { transform: scale(0.96); }
 
   /* エラーログ */
   #debug-msg {
@@ -60,17 +59,39 @@
     font-size: 12px; display: none; padding: 5px; z-index: 999;
   }
 
-  /* HUD */
-  #hud-lives { position: fixed; top: 15px; left: 15px; font-size: 24px; z-index: 50; display: none; text-shadow: 0 2px 5px black; }
+  /* HUD (ライフ・スコア・レベル) */
+  #hud-top {
+    position: fixed; top: 15px; left: 15px; z-index: 50;
+    display: none; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+  }
+  #lives-display { font-size: 24px; margin-bottom: 5px; }
+  #score-display { font-size: 20px; font-weight: bold; color: #fff; }
+  #level-display { font-size: 18px; color: #ffeb3b; margin-top: 2px; }
+
+  /* ROM表示 */
   #hud-rom { 
     position: fixed; top: 15px; right: 15px; font-size: 14px; 
     color: cyan; z-index: 50; display: none; 
-    background:rgba(0,0,0,0.6); padding:5px 10px; border-radius:5px; 
+    background:rgba(0,0,0,0.6); padding:6px 12px; border-radius:8px; 
     border:1px solid cyan;
   }
-  /* スイング判定のインジケーター */
+
+  /* 褒め言葉演出 (オーバーレイ) */
+  #praise-overlay {
+    position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%);
+    z-index: 200; pointer-events: none;
+    font-size: 32px; font-weight: bold; color: #fff;
+    text-shadow: 0 0 10px #ff00de, 0 0 20px #ff00de;
+    text-align: center; white-space: nowrap;
+    opacity: 0; transition: opacity 0.5s, transform 0.5s;
+  }
+  #praise-overlay.show {
+    opacity: 1; transform: translate(-50%, -50%) scale(1.2);
+  }
+
+  /* スイングインジケーター */
   #swing-indicator {
-    position: fixed; top: 50px; right: 15px; width: 20px; height: 20px;
+    position: fixed; top: 60px; right: 15px; width: 15px; height: 15px;
     border-radius: 50%; background: #333; border: 2px solid #555;
     z-index: 50; display: none;
   }
@@ -87,14 +108,21 @@
 <video id="input_video" playsinline webkit-playsinline muted autoplay></video>
 
 <div id="debug-msg"></div>
-<div id="hud-lives">❤️❤️❤️</div>
+
+<div id="hud-top">
+  <div id="lives-display">❤️❤️❤️</div>
+  <div id="score-display">Score: 0</div>
+  <div id="level-display">Lv. 1</div>
+</div>
+
 <div id="hud-rom">ROM: 0mm</div>
 <div id="swing-indicator"></div>
+<div id="praise-overlay">Good Job!</div>
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab (Swing Fix)</h1>
-    <p>親指を開く動作でタイミングよく<br>ボールを打ってください</p>
+    <h1>Thumb Rehab LevelUp</h1>
+    <p>徐々に難しくなるリハビリゲーム<br>1000pt毎に褒めてくれます！</p>
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
     <button class="btn" onclick="initSystem('left')">左手でスタート</button>
   </div>
@@ -102,14 +130,15 @@
   <div id="screen-calib" class="screen">
     <h2 id="calib-title" style="color:cyan; margin:0;">測定：閉じる</h2>
     <p id="calib-msg">親指を閉じて（グー）<br>ボタンを押してください</p>
-    <div id="calib-val" style="font-size:30px; color:cyan; margin:15px;">0 mm</div>
+    <div id="calib-val" style="font-size:32px; color:cyan; margin:20px;">0 mm</div>
     <button class="btn" onclick="nextCalib()">記録</button>
   </div>
 
   <div id="screen-result" class="screen">
     <h1 style="color:#ff5555;">Game Over</h1>
-    <p id="final-score">Score: 0</p>
-    <button class="btn" onclick="location.reload()">タイトルへ</button>
+    <p id="final-score" style="font-size:20px; font-weight:bold;">Score: 0</p>
+    <p id="final-level" style="color:#ffeb3b;">到達レベル: 1</p>
+    <button class="btn" onclick="location.reload()">タイトルへ戻る</button>
   </div>
 </div>
 
@@ -120,24 +149,40 @@ let hands;
 let isRightHand = true;
 let appState = 0; // 0:Menu, 1:Calib, 2:Game
 
-// データ
+// 手のデータ
 let landmarks = null;
 let thumbDistMm = 0;
-let distClose = 0; let distOpen = 0;
+let distClose = 0; 
+let distOpen = 0;
 
 // ゲームデータ
 let balls = [];
 let panels = [];
 let score = 0;
 let lives = 3;
+let level = 1;
+
+// スイング制御
+let batSwing = 0;     
+let prevBatSwing = 0; 
 let frameCountVal = 0;
 
-// スイング判定用変数 (修正箇所)
-let batSwing = 0;       // 現在の開き具合 (0.0〜1.0)
-let prevBatSwing = 0;   // 前フレームの開き具合
-let isSwinging = false; // 今まさに振った瞬間か？
+// 褒め言葉リスト (1000pt毎にランダム表示)
+const praiseMessages = [
+  "ナイス親指！", 
+  "素晴らしい動き！", 
+  "短母指伸筋が喜んでます！", 
+  "その調子！", 
+  "リハビリの達人！", 
+  "完璧なタイミング！", 
+  "美しい外転運動！", 
+  "神業です！", 
+  "アメージング！",
+  "筋肉が躍動してます！"
+];
+let nextPraiseScore = 1000; // 次に褒めるスコア
 
-// --- エラーハンドリング ---
+// --- エラー表示 ---
 function logError(msg) {
   const el = document.getElementById('debug-msg');
   el.style.display = 'block';
@@ -145,7 +190,7 @@ function logError(msg) {
   console.error(msg);
 }
 
-// --- システム初期化 ---
+// --- 初期化 ---
 async function initSystem(hand) {
   isRightHand = (hand === 'right');
   
@@ -169,7 +214,7 @@ async function initSystem(hand) {
     };
 
   } catch (err) {
-    logError("カメラ起動失敗: " + err.name);
+    logError("カメラ起動エラー: " + err.name);
     alert("カメラ設定を確認してください。");
   }
 }
@@ -178,10 +223,7 @@ function initAI() {
   try {
     hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
     hands.setOptions({
-      maxNumHands: 1,
-      modelComplexity: 0,
-      minDetectionConfidence: 0.5,
-      minTrackingConfidence: 0.5
+      maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
     });
     hands.onResults(onResults);
     processVideo();
@@ -191,14 +233,12 @@ function initAI() {
     setupCalib('close');
 
   } catch(e) {
-    logError("AI Init Error: " + e);
+    logError("AI Init: " + e);
   }
 }
 
 async function processVideo() {
-  if (videoElem.videoWidth > 0) {
-    await hands.send({image: videoElem});
-  }
+  if (videoElem.videoWidth > 0) await hands.send({image: videoElem});
   requestAnimationFrame(processVideo);
 }
 
@@ -213,14 +253,14 @@ function onResults(results) {
 
 function calcHand() {
   if(!landmarks) return;
-  // 座標変換 (videoがCSS反転されているため、Xを反転して計算)
   let w = width; let h = height;
+  // Video CSS反転対応のためX反転
   let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
 
-  let basePx = dist(p0.x, p0.y, p5.x, p5.y);
-  let mmPerPx = 100 / (basePx || 1);
+  let base = dist(p0.x, p0.y, p5.x, p5.y);
+  let mmPerPx = 100 / (base || 1);
   let thumbPx = dist(p4.x, p4.y, p5.x, p5.y);
   
   thumbDistMm = Math.floor(thumbPx * mmPerPx);
@@ -237,12 +277,8 @@ function setup() {
 }
 
 function draw() {
-  clear(); // 透明背景
-
-  if(appState === 2) {
-    runGame();
-  }
-
+  clear();
+  if(appState === 2) runGame();
   if(landmarks) drawSkeleton();
 }
 
@@ -280,7 +316,7 @@ function nextCalib() {
   } else {
     distOpen = thumbDistMm;
     if(distOpen <= distClose + 5) {
-      alert("動きが小さすぎます。再測定します。");
+      alert("動きが小さすぎます。");
       setupCalib('close');
       return;
     }
@@ -292,13 +328,16 @@ function nextCalib() {
 function startGame() {
   appState = 2;
   switchScreen(null);
-  document.getElementById('hud-lives').style.display = 'block';
+  document.getElementById('hud-top').style.display = 'block';
   document.getElementById('hud-rom').style.display = 'block';
   document.getElementById('swing-indicator').style.display = 'block';
   
-  score = 0; lives = 3; balls = []; panels = [];
+  score = 0; lives = 3; level = 1;
+  balls = []; panels = [];
+  nextPraiseScore = 1000;
+  
   initPanels();
-  updateLives();
+  updateHUD();
 }
 
 function initPanels() {
@@ -318,55 +357,64 @@ function initPanels() {
 function runGame() {
   frameCountVal++;
   
-  // 1. スイング値の計算
+  // 1. スイング判定
   let ratio = map(thumbDistMm, distClose, distOpen, 0, 1);
-  prevBatSwing = batSwing; // 前フレームの値を保存
-  batSwing = constrain(ratio, 0, 1); // 現在の値
+  prevBatSwing = batSwing;
+  batSwing = constrain(ratio, 0, 1);
 
-  // 2. スイング判定 (重要修正)
-  // 「前フレームは閉じていて(0.4未満)、今フレームで開いた(0.6以上)」場合だけスイングとみなす
-  // これにより「開きっぱなし」では打てなくなる
+  // 「閉じた状態(0.5未満)から開いた(0.5以上)」瞬間だけヒット
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
-  // スイングインジケーター表示（デバッグ用：振った瞬間に緑になる）
-  const ind = document.getElementById('swing-indicator');
   if(swingTrigger) {
+    const ind = document.getElementById('swing-indicator');
     ind.classList.add('active');
     setTimeout(()=>ind.classList.remove('active'), 200);
   }
 
   drawGauge();
 
-  // ボール生成
-  if(frameCountVal % 90 === 0) {
+  // 2. レベル管理 (500ptごとにLvアップ)
+  let calcLevel = Math.floor(score / 500) + 1;
+  if (calcLevel > level) {
+    level = calcLevel;
+    updateHUD();
+    showPraise(`LEVEL UP! Lv.${level}`);
+  }
+
+  // 3. ボール生成
+  // レベルが上がると間隔が短くなる (最短30フレーム)
+  let spawnRate = Math.max(30, 90 - (level * 5));
+  
+  if(frameCountVal % spawnRate === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
+    // レベルが上がると速度アップ
+    let speedBase = 40; 
+    let speed = Math.max(10, speedBase - (level * 2)); // 値が小さいほど速い(到達フレーム数)
+
     balls.push({
       x:sx, y:height*0.6, 
-      vx:(tx-sx)/40, vy:0, 
+      vx:(tx-sx)/speed, vy:0, 
       active:true, hit:false
     });
   }
 
-  // ボール更新
+  // 4. ボール処理
   let hitZone = isRightHand ? width*0.8 : width*0.2;
+  
   for(let i=balls.length-1; i>=0; i--){
     let b = balls[i];
     b.x += b.vx; b.y += b.vy;
     
     fill(255); stroke(0); circle(b.x, b.y, 20);
     
-    // ヒット条件の変更：
-    // ゾーン内にいる AND 「今まさに振った(swingTrigger)」であること
-    let inZone = abs(b.x - hitZone) < 60; // 判定少し甘めに(40->60)
+    let inZone = abs(b.x - hitZone) < 60;
     
     if(!b.hit && b.active && inZone && swingTrigger) {
       b.hit = true;
       let aim = 0;
-      // 開き具合によって高さを変える
       if(batSwing > 0.75) aim = 2; else if(batSwing > 0.5) aim = 1;
       
-      // ターゲット検索
       let targets = panels.filter(p => p.active && Math.floor((p.id-1)/3) === aim);
       if(targets.length === 0) targets = panels.filter(p => p.active);
       let t = targets.length > 0 ? targets[floor(random(targets.length))] : null;
@@ -374,25 +422,30 @@ function runGame() {
       let tx = t ? t.x+t.w/2 : (isRightHand?0:width);
       let ty = t ? t.y+t.h/2 : 0;
       let dx = tx-b.x; let dy = ty-b.y; let len = sqrt(dx*dx+dy*dy);
-      let speed = 25;
-      b.vx = (dx/len)*speed; b.vy = (dy/len)*speed;
+      // 打球速度も少し速く
+      let ballSpeed = 25 + level;
+      b.vx = (dx/len)*ballSpeed; b.vy = (dy/len)*ballSpeed;
     }
     
-    // パネル破壊
     if(b.hit && b.active) {
       for(let p of panels) {
         if(p.active && b.x>p.x && b.x<p.x+p.w && b.y>p.y && b.y<p.y+p.h) {
-          p.active=false; b.active=false; score+=100; updateLives(); break;
+          p.active=false; b.active=false; 
+          score+=100; 
+          checkScorePraise(); // 褒めチェック
+          updateHUD(); 
+          break;
         }
       }
     }
     
-    // 消失
     if(b.x<-100 || b.x>width+100 || b.y<-100 || b.y>height+100) {
       if(!b.hit && b.active) {
-        lives--; updateLives();
+        lives--; updateHUD();
         if(lives<=0) {
-          appState=3; document.getElementById('final-score').innerText="Score: "+score;
+          appState=3; 
+          document.getElementById('final-score').innerText="Score: "+score;
+          document.getElementById('final-level').innerText="到達レベル: "+level;
           switchScreen('screen-result');
         }
       }
@@ -400,7 +453,7 @@ function runGame() {
     }
   }
 
-  // パネル描画
+  // パネル
   let cnt=0;
   for(let p of panels) {
     if(p.active) {
@@ -411,33 +464,49 @@ function runGame() {
       text(p.id, p.x+p.w/2, p.y+p.h/2);
     }
   }
-  if(cnt===0 && panels.length>0) { score+=1000; initPanels(); }
+  if(cnt===0 && panels.length>0) { score+=1000; initPanels(); checkScorePraise(); updateHUD(); }
+}
+
+function checkScorePraise() {
+  if (score >= nextPraiseScore) {
+    // ランダムメッセージ選択
+    let msg = praiseMessages[Math.floor(random(praiseMessages.length))];
+    showPraise(msg);
+    nextPraiseScore += 1000;
+  }
+}
+
+function showPraise(text) {
+  const el = document.getElementById('praise-overlay');
+  el.innerText = text;
+  el.classList.add('show');
+  
+  // 色をランダムにする
+  let colors = ["#ff00de", "#00ff00", "#00e5ff", "#ffeb3b", "#ff5252"];
+  let c = colors[Math.floor(random(colors.length))];
+  el.style.textShadow = `0 0 10px ${c}, 0 0 20px ${c}`;
+
+  setTimeout(() => {
+    el.classList.remove('show');
+  }, 2000);
 }
 
 function drawGauge() {
   let x = isRightHand ? width-30 : 30;
   let y = height/2; let h = 200;
   fill(100, 150); rect(x-5, y-h/2, 10, h);
-  
   let cy = map(batSwing, 0, 1, y+h/2, y-h/2);
-  // スイングした瞬間だけ色を変える
-  if(prevBatSwing < 0.5 && batSwing >= 0.5) fill(255, 255, 0);
-  else fill(0, 255, 0);
-  
+  if(prevBatSwing < 0.5 && batSwing >= 0.5) fill(255, 255, 0); else fill(0, 255, 0);
   circle(x, cy, 20);
-  
-  stroke(255); 
-  line(x-10, y-h/6, x+10, y-h/6); // 上段境界
-  line(x-10, y+h/6, x+10, y+h/6); // 下段境界
-  
-  // スイング判定ライン(50%)
-  stroke(255, 0, 0);
-  line(x-15, y, x+15, y); 
+  stroke(255); line(x-10, y-h/6, x+10, y-h/6); line(x-10, y+h/6, x+10, y+h/6);
+  stroke(255,0,0); line(x-15, y, x+15, y); 
 }
 
-function updateLives() {
+function updateHUD() {
   let s=""; for(let i=0;i<lives;i++) s+="❤️";
-  document.getElementById('hud-lives').innerHTML = s + " <span style='font-size:16px'>Score: "+score+"</span>";
+  document.getElementById('lives-display').innerHTML = s;
+  document.getElementById('score-display').innerText = "Score: " + score;
+  document.getElementById('level-display').innerText = "Lv. " + level;
 }
 
 function switchScreen(id) {
