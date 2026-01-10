@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Bonus</title>
+<title>Thumb Rehab Ranking</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -32,7 +32,7 @@
 
   /* 画面パネル共通 */
   .screen {
-    background: rgba(0, 0, 0, 0.9);
+    background: rgba(0, 0, 0, 0.95); /* 少し濃く */
     border: 2px solid #ffcc00; border-radius: 16px;
     padding: 20px; text-align: center; width: 90%; max-width: 420px;
     pointer-events: auto; display: none;
@@ -52,6 +52,24 @@
     text-align: left; font-size: 13px; line-height: 1.6; color: #eee;
   }
   .step-num { color: #ffeb3b; font-weight: bold; margin-right: 5px; }
+
+  /* ランキング表示エリア */
+  #ranking-container {
+    background: rgba(0, 0, 0, 0.5);
+    border: 1px solid #555;
+    border-radius: 8px; padding: 10px;
+    margin-bottom: 15px; text-align: left;
+  }
+  .rank-title { font-size: 14px; color: #ffeb3b; border-bottom: 1px solid #555; margin-bottom: 5px; padding-bottom: 3px; }
+  .rank-list { list-style: none; padding: 0; margin: 0; font-size: 14px; }
+  .rank-item { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dashed #333; }
+  .rank-item:last-child { border-bottom: none; }
+  .rank-rank { width: 30px; font-weight: bold; color: #aaa; }
+  .rank-score { color: #fff; font-weight: bold; }
+  /* 1位〜3位の色 */
+  .rank-item:nth-child(1) .rank-rank { color: #ffd700; } /* 金 */
+  .rank-item:nth-child(2) .rank-rank { color: #c0c0c0; } /* 銀 */
+  .rank-item:nth-child(3) .rank-rank { color: #c47135; } /* 銅 */
 
   .btn {
     width: 100%; padding: 16px; font-size: 18px; font-weight: bold;
@@ -109,8 +127,6 @@
 
 <video id="input_video" playsinline webkit-playsinline muted autoplay></video>
 
-<div id="debug-msg" style="display:none; position:fixed; bottom:0; background:red; color:white;"></div>
-
 <div id="hud-top">
   <div id="lives-display">❤️❤️❤️</div>
   <div id="score-display">Score: 0</div>
@@ -124,16 +140,20 @@
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab Bonus</h1>
+    <h1>Thumb Rehab Ranking</h1>
     
+    <div id="ranking-container">
+      <div class="rank-title">🏆️ TOP 5 SCORE</div>
+      <ul id="ranking-list" class="rank-list">
+        <li class="rank-item"><span style="color:#aaa;">記録なし</span></li>
+      </ul>
+    </div>
+
     <div class="instructions">
-      <span class="step-num">手順1</span> プレイする手を選んでスタート<br>
-      <span class="step-num">手順2</span> 手を✊️の形にして、カメラに向けてセットして下さい。<br>
-      <span class="step-num">手順3</span> 親指の可動域を測定します。<br>
-      <span class="step-num">手順4</span> ゲーム開始！<br>
-      &nbsp;&nbsp;● <strong>待つ</strong>：親指を閉じる<br>
-      &nbsp;&nbsp;● <strong>打つ</strong>：ボールに合わせてパッと開く！<br>
-      <span style="color:#ffeb3b; font-size:11px;">※Lv.10で回復ボーナスが出現します！</span>
+      <span class="step-num">手順1</span> 手を選択してスタート<br>
+      <span class="step-num">手順2</span> 手を✊️にしてカメラへセット<br>
+      <span class="step-num">手順3</span> 可動域を測定<br>
+      <span class="step-num">手順4</span> ゲーム開始！(ボールに合わせて開く)
     </div>
 
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
@@ -149,8 +169,13 @@
 
   <div id="screen-result" class="screen">
     <h1 style="color:#ff5555;">Game Over</h1>
-    <p id="final-score" style="font-size:20px; font-weight:bold;">Score: 0</p>
-    <p id="final-level" style="color:#ffeb3b;">到達レベル: 1</p>
+    <p id="final-score" style="font-size:24px; font-weight:bold; margin-bottom:5px;">Score: 0</p>
+    <p id="final-level" style="color:#ffeb3b; margin-bottom:10px;">到達レベル: 1</p>
+    
+    <div id="new-record-msg" style="color:#00ff00; font-weight:bold; font-size:18px; margin-bottom:15px; display:none;">
+      🎉 ランクインしました！ 🎉
+    </div>
+
     <button class="btn" onclick="location.reload()">タイトルへ戻る</button>
   </div>
 </div>
@@ -177,13 +202,16 @@ let level = 1;
 let combo = 0;
 
 // ボーナス管理
-let bonusGenerated = false; // ボーナス発生済みフラグ
+let bonusGenerated = false;
 
 // スイング制御
 let batSwing = 0;     
 let prevBatSwing = 0; 
 let frameCountVal = 0;
 let swingActiveTimer = 0;
+
+// ランキング用キー
+const RANKING_KEY = 'thumb_rehab_ranking_v1';
 
 // 褒め言葉リスト
 const praiseMessages = [
@@ -192,6 +220,57 @@ const praiseMessages = [
   "美しい外転運動！", "神業です！", "アメージング！"
 ];
 let nextPraiseScore = 1000;
+
+// --- ページ読み込み時 ---
+window.onload = function() {
+  loadAndShowRanking();
+};
+
+// --- ランキング管理システム ---
+function loadAndShowRanking() {
+  let data = localStorage.getItem(RANKING_KEY);
+  let ranking = data ? JSON.parse(data) : [];
+  
+  const list = document.getElementById('ranking-list');
+  list.innerHTML = ""; // クリア
+
+  if (ranking.length === 0) {
+    list.innerHTML = '<li class="rank-item" style="justify-content:center; color:#aaa;">記録なし</li>';
+    return;
+  }
+
+  // 1位から順に表示
+  ranking.forEach((r, index) => {
+    let li = document.createElement('li');
+    li.className = 'rank-item';
+    li.innerHTML = `
+      <span class="rank-rank">${index + 1}.</span>
+      <span class="rank-score">${r.score} pt</span>
+    `;
+    list.appendChild(li);
+  });
+}
+
+function saveScore(newScore) {
+  let data = localStorage.getItem(RANKING_KEY);
+  let ranking = data ? JSON.parse(data) : [];
+  
+  // 新しいスコアを追加
+  ranking.push({ score: newScore, date: new Date().toISOString() });
+  
+  // スコア順(降順)にソート
+  ranking.sort((a, b) => b.score - a.score);
+  
+  // 上位5つだけ残す
+  ranking = ranking.slice(0, 5);
+  
+  // 保存
+  localStorage.setItem(RANKING_KEY, JSON.stringify(ranking));
+  
+  // ランクインしたか判定 (今回のスコアが保存リストに含まれているか)
+  let isRankIn = ranking.some(r => r.score === newScore);
+  return isRankIn;
+}
 
 // --- 初期化 ---
 async function initSystem(hand) {
@@ -252,10 +331,9 @@ function calcHand() {
   if(!landmarks) return;
   let w = width; let h = height;
 
-  // X反転 (Video CSS対応)
-  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h}; // 手首
-  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; // 人差指基部
-  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h}; // 親指先
+  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h}; 
+  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; 
+  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h}; 
 
   let v1 = {x: p5.x - p0.x, y: p5.y - p0.y};
   let v2 = {x: p4.x - p0.x, y: p4.y - p0.y};
@@ -361,7 +439,6 @@ function initPanels() {
       let id = (r*3)+c+1;
       let y = height*0.55 - (r*(ph+10)); 
       let x = sx + c*(pw+5);
-      // isHeart: ボーナスパネルかどうか
       panels.push({
         id:id, x:x, y:y, w:pw, h:ph, 
         isHit:false, isHeart:false,
@@ -371,22 +448,15 @@ function initPanels() {
   }
 }
 
-// ボーナスパネル生成処理
 function triggerBonus() {
   if (bonusGenerated) return;
   bonusGenerated = true;
   showPraise("BONUS CHANCE!");
-
-  // 生きているパネルを探す
   let activePanels = panels.filter(p => !p.isHit);
-  
-  // もし全て破壊されていたら、強制的に復活させてからハートにする
   if (activePanels.length === 0) {
     initPanels();
-    activePanels = panels; // 全復活
+    activePanels = panels;
   }
-
-  // ランダムに1つ選んでハートにする
   let lucky = activePanels[Math.floor(random(activePanels.length))];
   lucky.isHeart = true;
 }
@@ -421,7 +491,7 @@ function runGame() {
     showPraise(`LEVEL UP! Lv.${level}`);
   }
 
-  // ★ レベル10到達でボーナス発生
+  // ★ レベル10到達でボーナス
   if (level >= 10 && !bonusGenerated) {
     triggerBonus();
   }
@@ -459,13 +529,11 @@ function runGame() {
   for(let i=balls.length-1; i>=0; i--){
     let b = balls[i];
 
-    // 移動更新
     b.x += b.vx; 
     b.y += b.vy;
     
     if (!b.hit) {
-        b.vy += b.ay || 0; // カーブ
-        // チェンジアップ減速(止まらない版)
+        b.vy += b.ay || 0; 
         if (b.type === 'changeup' && !b.isDecelerated) {
             let isPassedCenter = isRightHand ? (b.x > width * 0.45) : (b.x < width * 0.55);
             if (isPassedCenter) {
@@ -510,14 +578,12 @@ function runGame() {
           p.vx = random(-5, 5); p.vy = random(-10, -5); p.vrot = random(-0.2, 0.2);
           b.active = false; 
           
-          // ★ ハートパネル判定
           if (p.isHeart) {
-            lives = Math.min(3, lives + 1); // ライフ回復
+            lives = Math.min(3, lives + 1); 
             showPraise("LIFE UP! ❤️");
           } else {
             score+=100;
           }
-          
           checkScorePraise(); updateHUD(); break;
         }
       }
@@ -527,35 +593,25 @@ function runGame() {
       if(!b.hit && b.active) {
         lives--; combo = 0; updateHUD();
         if(lives<=0) {
-          appState=3; 
-          document.getElementById('final-score').innerText="Score: "+score;
-          document.getElementById('final-level').innerText="到達レベル: "+level;
-          switchScreen('screen-result');
+          gameOver();
         }
       }
       balls.splice(i,1);
     }
   }
 
-  // 5. パネル描画 & エフェクト
+  // 5. パネル描画
   let activeCount = 0;
   for(let p of panels) {
     if (!p.isHit) {
       activeCount++;
-      // ハートパネルなら色を変える
-      if (p.isHeart) {
-        fill(255, 100, 150, 200); stroke(255); 
-      } else {
-        fill(0,200,0,150); stroke(255); 
-      }
+      if (p.isHeart) { fill(255, 100, 150, 200); stroke(255); } 
+      else { fill(0,200,0,150); stroke(255); }
       strokeWeight(2); rect(p.x, p.y, p.w, p.h);
-      
       fill(255); noStroke(); textAlign(CENTER,CENTER); textSize(24);
       if (p.isHeart) text("❤️", p.x+p.w/2, p.y+p.h/2);
       else text(p.id, p.x+p.w/2, p.y+p.h/2);
-
     } else {
-      // 破壊エフェクト
       if (p.alpha > 0) {
         p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.rot += p.vrot; p.alpha -= 5;
         push(); translate(p.x + p.w/2, p.y + p.h/2); rotate(p.rot);
@@ -569,6 +625,22 @@ function runGame() {
   if(activeCount===0 && panels.length>0) { 
     score+=1000; initPanels(); checkScorePraise(); updateHUD(); 
   }
+}
+
+// --- ゲームオーバー処理 ---
+function gameOver() {
+  appState = 3;
+  // スコア保存 & ランクイン判定
+  let isRankIn = saveScore(score);
+  
+  // UI表示
+  document.getElementById('final-score').innerText = "Score: " + score;
+  document.getElementById('final-level').innerText = "到達レベル: " + level;
+  
+  if (isRankIn) document.getElementById('new-record-msg').style.display = 'block';
+  else document.getElementById('new-record-msg').style.display = 'none';
+
+  switchScreen('screen-result');
 }
 
 function checkScorePraise() {
