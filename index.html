@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Thumb Rehab Ranking</title>
+<title>Thumb Rehab Sound</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -32,7 +32,7 @@
 
   /* 画面パネル共通 */
   .screen {
-    background: rgba(0, 0, 0, 0.95); /* 少し濃く */
+    background: rgba(0, 0, 0, 0.95);
     border: 2px solid #ffcc00; border-radius: 16px;
     padding: 20px; text-align: center; width: 90%; max-width: 420px;
     pointer-events: auto; display: none;
@@ -56,8 +56,7 @@
   /* ランキング表示エリア */
   #ranking-container {
     background: rgba(0, 0, 0, 0.5);
-    border: 1px solid #555;
-    border-radius: 8px; padding: 10px;
+    border: 1px solid #555; border-radius: 8px; padding: 10px;
     margin-bottom: 15px; text-align: left;
   }
   .rank-title { font-size: 14px; color: #ffeb3b; border-bottom: 1px solid #555; margin-bottom: 5px; padding-bottom: 3px; }
@@ -66,10 +65,9 @@
   .rank-item:last-child { border-bottom: none; }
   .rank-rank { width: 30px; font-weight: bold; color: #aaa; }
   .rank-score { color: #fff; font-weight: bold; }
-  /* 1位〜3位の色 */
-  .rank-item:nth-child(1) .rank-rank { color: #ffd700; } /* 金 */
-  .rank-item:nth-child(2) .rank-rank { color: #c0c0c0; } /* 銀 */
-  .rank-item:nth-child(3) .rank-rank { color: #c47135; } /* 銅 */
+  .rank-item:nth-child(1) .rank-rank { color: #ffd700; }
+  .rank-item:nth-child(2) .rank-rank { color: #c0c0c0; }
+  .rank-item:nth-child(3) .rank-rank { color: #c47135; }
 
   .btn {
     width: 100%; padding: 16px; font-size: 18px; font-weight: bold;
@@ -140,20 +138,20 @@
 
 <div id="ui-layer">
   <div id="screen-menu" class="screen active">
-    <h1>Thumb Rehab Ranking</h1>
+    <h1>Thumb Rehab Sound</h1>
     
     <div id="ranking-container">
       <div class="rank-title">🏆️ TOP 5 SCORE</div>
       <ul id="ranking-list" class="rank-list">
-        <li class="rank-item"><span style="color:#aaa;">記録なし</span></li>
+        <li class="rank-item"><span style="color:#aaa;">読み込み中...</span></li>
       </ul>
     </div>
 
     <div class="instructions">
-      <span class="step-num">手順1</span> 手を選択してスタート<br>
+      <span class="step-num">手順1</span> 手を選んでスタート<br>
       <span class="step-num">手順2</span> 手を✊️にしてカメラへセット<br>
       <span class="step-num">手順3</span> 可動域を測定<br>
-      <span class="step-num">手順4</span> ゲーム開始！(ボールに合わせて開く)
+      <span class="step-num">手順4</span> ボールに合わせて開く！
     </div>
 
     <button class="btn" onclick="initSystem('right')">右手でスタート</button>
@@ -173,7 +171,7 @@
     <p id="final-level" style="color:#ffeb3b; margin-bottom:10px;">到達レベル: 1</p>
     
     <div id="new-record-msg" style="color:#00ff00; font-weight:bold; font-size:18px; margin-bottom:15px; display:none;">
-      🎉 ランクインしました！ 🎉
+      🎉 ランクイン！ 🎉
     </div>
 
     <button class="btn" onclick="location.reload()">タイトルへ戻る</button>
@@ -189,7 +187,7 @@ let appState = 0; // 0:Menu, 1:Calib, 2:Game
 
 // 手のデータ
 let landmarks = null;
-let thumbAngle = 0; // 角度(度)
+let thumbAngle = 0; 
 let angleClose = 0; 
 let angleOpen = 0;
 
@@ -200,8 +198,6 @@ let score = 0;
 let lives = 3;
 let level = 1;
 let combo = 0;
-
-// ボーナス管理
 let bonusGenerated = false;
 
 // スイング制御
@@ -210,10 +206,13 @@ let prevBatSwing = 0;
 let frameCountVal = 0;
 let swingActiveTimer = 0;
 
-// ランキング用キー
+// 音声コンテキスト
+let audioCtx = null;
+
+// ランキングキー
 const RANKING_KEY = 'thumb_rehab_ranking_v1';
 
-// 褒め言葉リスト
+// 褒め言葉
 const praiseMessages = [
   "ナイス親指！", "素晴らしい動き！", "短母指伸筋が喜んでます！", 
   "その調子！", "リハビリの達人！", "完璧なタイミング！", 
@@ -221,32 +220,92 @@ const praiseMessages = [
 ];
 let nextPraiseScore = 1000;
 
-// --- ページ読み込み時 ---
+// --- 起動時処理 ---
 window.onload = function() {
   loadAndShowRanking();
 };
 
-// --- ランキング管理システム ---
+// --- サウンド生成 (Audio API) ---
+function initAudio() {
+  if (!audioCtx) {
+    // ユーザーアクション(ボタンクリック)でコンテキスト作成
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) audioCtx = new AudioContext();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
+function playSound(type) {
+  if (!audioCtx) return;
+  const t = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  if (type === 'hit') {
+    // カキーン！ (短形波で金属音っぽく)
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(600, t);
+    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.1);
+    gain.gain.setValueAtTime(0.1, t);
+    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
+    osc.start(t);
+    osc.stop(t + 0.3);
+  } 
+  else if (type === 'break') {
+    // ズガーン！ (ノイズ的：低いSawtoothで代用)
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(100, t);
+    osc.frequency.linearRampToValueAtTime(50, t + 0.2);
+    gain.gain.setValueAtTime(0.2, t);
+    gain.gain.linearRampToValueAtTime(0.01, t + 0.4);
+    osc.start(t);
+    osc.stop(t + 0.4);
+  }
+  else if (type === 'levelup') {
+    // ピロリロリン (アルペジオ)
+    playTone(880, t, 0.1);
+    playTone(1108, t+0.1, 0.1);
+    playTone(1320, t+0.2, 0.2);
+    playTone(1760, t+0.3, 0.4);
+  }
+  else if (type === 'gameover') {
+    // デデーン...
+    playTone(300, t, 0.3);
+    playTone(250, t+0.3, 0.6);
+  }
+}
+
+function playTone(freq, startTime, duration) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.type = 'triangle';
+  osc.frequency.setValueAtTime(freq, startTime);
+  gain.gain.setValueAtTime(0.1, startTime);
+  gain.gain.linearRampToValueAtTime(0, startTime + duration);
+  osc.start(startTime);
+  osc.stop(startTime + duration);
+}
+
+// --- ランキング ---
 function loadAndShowRanking() {
   let data = localStorage.getItem(RANKING_KEY);
   let ranking = data ? JSON.parse(data) : [];
-  
   const list = document.getElementById('ranking-list');
-  list.innerHTML = ""; // クリア
-
+  list.innerHTML = "";
   if (ranking.length === 0) {
     list.innerHTML = '<li class="rank-item" style="justify-content:center; color:#aaa;">記録なし</li>';
     return;
   }
-
-  // 1位から順に表示
   ranking.forEach((r, index) => {
     let li = document.createElement('li');
     li.className = 'rank-item';
-    li.innerHTML = `
-      <span class="rank-rank">${index + 1}.</span>
-      <span class="rank-score">${r.score} pt</span>
-    `;
+    li.innerHTML = `<span class="rank-rank">${index + 1}.</span><span class="rank-score">${r.score} pt</span>`;
     list.appendChild(li);
   });
 }
@@ -254,28 +313,18 @@ function loadAndShowRanking() {
 function saveScore(newScore) {
   let data = localStorage.getItem(RANKING_KEY);
   let ranking = data ? JSON.parse(data) : [];
-  
-  // 新しいスコアを追加
   ranking.push({ score: newScore, date: new Date().toISOString() });
-  
-  // スコア順(降順)にソート
   ranking.sort((a, b) => b.score - a.score);
-  
-  // 上位5つだけ残す
   ranking = ranking.slice(0, 5);
-  
-  // 保存
   localStorage.setItem(RANKING_KEY, JSON.stringify(ranking));
-  
-  // ランクインしたか判定 (今回のスコアが保存リストに含まれているか)
-  let isRankIn = ranking.some(r => r.score === newScore);
-  return isRankIn;
+  return ranking.some(r => r.score === newScore);
 }
 
 // --- 初期化 ---
 async function initSystem(hand) {
   isRightHand = (hand === 'right');
-  
+  initAudio(); // 音声準備
+
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
     alert("https接続が必要です。");
     return;
@@ -288,13 +337,11 @@ async function initSystem(hand) {
       audio: false,
       video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
     });
-
     videoElem.srcObject = stream;
     videoElem.onloadedmetadata = () => {
       videoElem.play();
       initAI();
     };
-
   } catch (err) {
     alert("カメラエラー: " + err.name);
   }
@@ -330,27 +377,20 @@ function onResults(results) {
 function calcHand() {
   if(!landmarks) return;
   let w = width; let h = height;
-
-  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h}; 
-  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h}; 
-  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h}; 
+  let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
+  let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
+  let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
 
   let v1 = {x: p5.x - p0.x, y: p5.y - p0.y};
   let v2 = {x: p4.x - p0.x, y: p4.y - p0.y};
-
   let dot = v1.x * v2.x + v1.y * v2.y;
   let mag1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y);
   let mag2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y);
-  
   if (mag1 * mag2 === 0) return; 
-
-  let cosTheta = dot / (mag1 * mag2);
-  cosTheta = Math.max(-1, Math.min(1, cosTheta));
-  let rad = Math.acos(cosTheta);
-  let deg = Math.floor(rad * (180 / Math.PI));
+  let cosTheta = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
+  let deg = Math.floor(Math.acos(cosTheta) * (180 / Math.PI));
 
   thumbAngle = deg;
-
   if(appState===1) document.getElementById('calib-val').innerText = thumbAngle + "°";
   document.getElementById('hud-rom').innerText = thumbAngle + "°";
 }
@@ -422,8 +462,7 @@ function startGame() {
   document.getElementById('swing-indicator').style.display = 'block';
   
   score = 0; lives = 3; level = 1; combo = 0;
-  balls = []; panels = [];
-  bonusGenerated = false;
+  balls = []; panels = []; bonusGenerated = false;
   nextPraiseScore = 1000;
   
   initPanels();
@@ -453,10 +492,7 @@ function triggerBonus() {
   bonusGenerated = true;
   showPraise("BONUS CHANCE!");
   let activePanels = panels.filter(p => !p.isHit);
-  if (activePanels.length === 0) {
-    initPanels();
-    activePanels = panels;
-  }
+  if (activePanels.length === 0) { initPanels(); activePanels = panels; }
   let lucky = activePanels[Math.floor(random(activePanels.length))];
   lucky.isHeart = true;
 }
@@ -464,11 +500,9 @@ function triggerBonus() {
 function runGame() {
   frameCountVal++;
   
-  // 1. スイング判定
   let ratio = map(thumbAngle, angleClose, angleOpen, 0, 1);
   prevBatSwing = batSwing;
   batSwing = constrain(ratio, 0, 1);
-
   let swingTrigger = (prevBatSwing < 0.5 && batSwing >= 0.5);
   
   if(swingTrigger) {
@@ -478,70 +512,53 @@ function runGame() {
     setTimeout(()=>ind.classList.remove('active'), 250);
   }
   if(swingActiveTimer > 0) swingActiveTimer--;
-
   let isBatActive = (swingActiveTimer > 0);
 
   drawGauge();
 
-  // 2. レベル管理
   let calcLevel = Math.floor(score / 500) + 1;
   if (calcLevel > level) {
     level = calcLevel;
     updateHUD();
     showPraise(`LEVEL UP! Lv.${level}`);
+    playSound('levelup'); // 効果音
   }
 
-  // ★ レベル10到達でボーナス
-  if (level >= 10 && !bonusGenerated) {
-    triggerBonus();
-  }
+  if (level >= 10 && !bonusGenerated) triggerBonus();
 
-  // 3. ボール生成
   if(balls.length === 0 && frameCountVal % 60 === 0) {
     let sx = isRightHand ? 0 : width;
     let tx = isRightHand ? width*0.8 : width*0.2;
-    
-    // 球種
     let pitchType = 'straight';
     if (level >= 9) {
         let r = random();
-        if (r < 0.35) pitchType = 'curve';
-        else if (r < 0.6) pitchType = 'changeup';
+        if (r < 0.35) pitchType = 'curve'; else if (r < 0.6) pitchType = 'changeup';
     }
-
     let speedBase = 70; 
     let travelFrames = Math.max(15, speedBase - (level * 3));
-
     balls.push({
       x:sx, y:height*0.6, 
       vx:(tx-sx)/travelFrames, 
       vy: (pitchType==='curve' ? (isRightHand ? -3 : 3) : 0), 
       ay: (pitchType==='curve' ? (isRightHand ? 0.1 : -0.1) : 0), 
-      type: pitchType,
-      isDecelerated: false, 
-      active:true, hit:false
+      type: pitchType, isDecelerated: false, active:true, hit:false
     });
   }
 
-  // 4. ボール処理
   let hitZone = isRightHand ? width*0.8 : width*0.2;
   
   for(let i=balls.length-1; i>=0; i--){
     let b = balls[i];
-
-    b.x += b.vx; 
-    b.y += b.vy;
+    b.x += b.vx; b.y += b.vy;
     
     if (!b.hit) {
         b.vy += b.ay || 0; 
         if (b.type === 'changeup' && !b.isDecelerated) {
             let isPassedCenter = isRightHand ? (b.x > width * 0.45) : (b.x < width * 0.55);
             if (isPassedCenter) {
-                b.vx *= 0.5; // 減速
-                let minSpeed = 3.0; 
+                b.vx *= 0.5; let minSpeed = 3.0; 
                 if(Math.abs(b.vx) < minSpeed) b.vx = (b.vx > 0) ? minSpeed : -minSpeed;
-                b.vy += 2.0; 
-                b.isDecelerated = true;
+                b.vy += 2.0; b.isDecelerated = true;
             }
         }
     }
@@ -552,6 +569,8 @@ function runGame() {
     
     if(!b.hit && b.active && inZone && isBatActive) {
       b.hit = true;
+      playSound('hit'); // ヒット音
+      
       let aim = 0;
       if(batSwing > 0.75) aim = 2; else if(batSwing > 0.5) aim = 1;
       
@@ -577,10 +596,10 @@ function runGame() {
           p.isHit = true; 
           p.vx = random(-5, 5); p.vy = random(-10, -5); p.vrot = random(-0.2, 0.2);
           b.active = false; 
+          playSound('break'); // 破壊音
           
           if (p.isHeart) {
-            lives = Math.min(3, lives + 1); 
-            showPraise("LIFE UP! ❤️");
+            lives = Math.min(3, lives + 1); showPraise("LIFE UP! ❤️");
           } else {
             score+=100;
           }
@@ -593,6 +612,7 @@ function runGame() {
       if(!b.hit && b.active) {
         lives--; combo = 0; updateHUD();
         if(lives<=0) {
+          playSound('gameover'); // ゲームオーバー音
           gameOver();
         }
       }
@@ -600,22 +620,19 @@ function runGame() {
     }
   }
 
-  // 5. パネル描画
   let activeCount = 0;
   for(let p of panels) {
     if (!p.isHit) {
       activeCount++;
-      if (p.isHeart) { fill(255, 100, 150, 200); stroke(255); } 
-      else { fill(0,200,0,150); stroke(255); }
+      if (p.isHeart) { fill(255, 100, 150, 200); stroke(255); } else { fill(0,200,0,150); stroke(255); }
       strokeWeight(2); rect(p.x, p.y, p.w, p.h);
       fill(255); noStroke(); textAlign(CENTER,CENTER); textSize(24);
-      if (p.isHeart) text("❤️", p.x+p.w/2, p.y+p.h/2);
-      else text(p.id, p.x+p.w/2, p.y+p.h/2);
+      if (p.isHeart) text("❤️", p.x+p.w/2, p.y+p.h/2); else text(p.id, p.x+p.w/2, p.y+p.h/2);
     } else {
       if (p.alpha > 0) {
         p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.rot += p.vrot; p.alpha -= 5;
         push(); translate(p.x + p.w/2, p.y + p.h/2); rotate(p.rot);
-        fill(p.isHeart ? 255 : 255, p.isHeart ? 100 : 0, p.isHeart ? 150 : 0, p.alpha);
+        fill(p.isHeart?255:255, p.isHeart?100:0, p.isHeart?150:0, p.alpha);
         stroke(255, p.alpha); rect(-p.w/2, -p.h/2, p.w, p.h);
         pop();
       }
@@ -625,22 +642,6 @@ function runGame() {
   if(activeCount===0 && panels.length>0) { 
     score+=1000; initPanels(); checkScorePraise(); updateHUD(); 
   }
-}
-
-// --- ゲームオーバー処理 ---
-function gameOver() {
-  appState = 3;
-  // スコア保存 & ランクイン判定
-  let isRankIn = saveScore(score);
-  
-  // UI表示
-  document.getElementById('final-score').innerText = "Score: " + score;
-  document.getElementById('final-level').innerText = "到達レベル: " + level;
-  
-  if (isRankIn) document.getElementById('new-record-msg').style.display = 'block';
-  else document.getElementById('new-record-msg').style.display = 'none';
-
-  switchScreen('screen-result');
 }
 
 function checkScorePraise() {
@@ -653,8 +654,7 @@ function checkScorePraise() {
 
 function showPraise(text) {
   const el = document.getElementById('praise-overlay');
-  el.innerText = text;
-  el.classList.add('show');
+  el.innerText = text; el.classList.add('show');
   let colors = ["#ff00de", "#00ff00", "#00e5ff", "#ffeb3b", "#ff5252"];
   let c = colors[Math.floor(random(colors.length))];
   el.style.textShadow = `0 0 10px ${c}, 0 0 20px ${c}`;
@@ -678,6 +678,15 @@ function updateHUD() {
   document.getElementById('score-display').innerText = "Score: " + score;
   document.getElementById('combo-display').innerText = combo + " Combo!";
   document.getElementById('level-display').innerText = "Lv. " + level;
+}
+
+function gameOver() {
+  appState = 3;
+  let isRankIn = saveScore(score);
+  document.getElementById('final-score').innerText = "Score: " + score;
+  document.getElementById('final-level').innerText = "到達レベル: " + level;
+  document.getElementById('new-record-msg').style.display = isRankIn ? 'block' : 'none';
+  switchScreen('screen-result');
 }
 
 function switchScreen(id) {
