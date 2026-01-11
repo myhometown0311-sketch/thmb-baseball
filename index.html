@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Number Shot</title>
+<title>Number Shot Guide</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -45,7 +45,7 @@
   h2 { color: #00e5ff; margin: 0 0 10px 0; font-size: 18px; }
   p { font-size: 14px; color: #ccc; margin-bottom: 15px; line-height: 1.5; }
 
-  /* 遊び方説明エリア (修正箇所) */
+  /* 遊び方説明エリア */
   .instructions {
     background: rgba(255, 255, 255, 0.1);
     border-radius: 8px; padding: 15px; margin-bottom: 15px;
@@ -57,7 +57,6 @@
     text-align: center; font-weight: bold; margin-right: 8px; font-size: 12px;
   }
 
-  /* ランキング表示エリア */
   #ranking-container {
     background: rgba(0, 0, 0, 0.5);
     border: 1px solid #555; border-radius: 8px; padding: 10px;
@@ -82,7 +81,6 @@
   }
   .btn:active { transform: scale(0.96); }
 
-  /* HUD */
   #hud-top {
     position: fixed; top: 15px; left: 15px; z-index: 50;
     display: none; text-shadow: 0 2px 4px rgba(0,0,0,0.8);
@@ -163,7 +161,7 @@
 
   <div id="screen-calib" class="screen">
     <h2 id="calib-title">測定：閉じる</h2>
-    <p id="calib-msg">親指を閉じて（グー）<br>ボタンを押してください</p>
+    <p id="calib-msg">ガイドに合わせて<br>親指を閉じて（グー）<br>ボタンを押してください</p>
     <div id="calib-val" style="font-size:40px; color:cyan; margin:20px; font-family:monospace;">0°</div>
     <button class="btn" onclick="nextCalib()">記録</button>
   </div>
@@ -186,15 +184,13 @@
 const videoElem = document.getElementById('input_video');
 let hands;
 let isRightHand = true;
-let appState = 0; // 0:Menu, 1:Calib, 2:Game
+let appState = 0; 
 
-// 手のデータ
 let landmarks = null;
 let thumbAngle = 0; 
 let angleClose = 0; 
 let angleOpen = 0;
 
-// ゲームデータ
 let balls = [];
 let panels = [];
 let score = 0;
@@ -203,19 +199,14 @@ let level = 1;
 let combo = 0;
 let bonusGenerated = false;
 
-// スイング制御
 let batSwing = 0;     
 let prevBatSwing = 0; 
 let frameCountVal = 0;
 let swingActiveTimer = 0;
 
-// 音声
 let audioCtx = null;
-
-// ランキングキー
 const RANKING_KEY = 'number_shot_ranking';
 
-// 褒め言葉
 const praiseMessages = [
   "ナイス親指！", "素晴らしい動き！", "短母指伸筋が喜んでます！", 
   "その調子！", "リハビリの達人！", "完璧なタイミング！", 
@@ -223,12 +214,10 @@ const praiseMessages = [
 ];
 let nextPraiseScore = 1000;
 
-// --- 起動処理 ---
 window.onload = function() {
   loadAndShowRanking();
 };
 
-// --- オーディオ ---
 function initAudio() {
   if (!audioCtx) {
     const AudioContext = window.AudioContext || window.webkitAudioContext;
@@ -246,19 +235,13 @@ function playSound(type) {
   gain.connect(audioCtx.destination);
 
   if (type === 'hit') {
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(600, t);
-    osc.frequency.exponentialRampToValueAtTime(1200, t + 0.1);
-    gain.gain.setValueAtTime(0.1, t);
-    gain.gain.exponentialRampToValueAtTime(0.01, t + 0.3);
-    osc.start(t); osc.stop(t + 0.3);
+    osc.type = 'square'; osc.frequency.setValueAtTime(600, t); osc.frequency.exponentialRampToValueAtTime(1200, t+0.1);
+    gain.gain.setValueAtTime(0.1, t); gain.gain.exponentialRampToValueAtTime(0.01, t+0.3);
+    osc.start(t); osc.stop(t+0.3);
   } else if (type === 'break') {
-    osc.type = 'sawtooth';
-    osc.frequency.setValueAtTime(100, t);
-    osc.frequency.linearRampToValueAtTime(50, t + 0.2);
-    gain.gain.setValueAtTime(0.2, t);
-    gain.gain.linearRampToValueAtTime(0.01, t + 0.4);
-    osc.start(t); osc.stop(t + 0.4);
+    osc.type = 'sawtooth'; osc.frequency.setValueAtTime(100, t); osc.frequency.linearRampToValueAtTime(50, t+0.2);
+    gain.gain.setValueAtTime(0.2, t); gain.gain.linearRampToValueAtTime(0.01, t+0.4);
+    osc.start(t); osc.stop(t+0.4);
   } else if (type === 'levelup') {
     playTone(880, t, 0.1); playTone(1108, t+0.1, 0.1); playTone(1320, t+0.2, 0.2); playTone(1760, t+0.3, 0.4);
   } else if (type === 'gameover') {
@@ -270,27 +253,21 @@ function playTone(freq, st, dur) {
   const osc = audioCtx.createOscillator();
   const gain = audioCtx.createGain();
   osc.connect(gain); gain.connect(audioCtx.destination);
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(freq, st);
-  gain.gain.setValueAtTime(0.1, st);
-  gain.gain.linearRampToValueAtTime(0, st + dur);
-  osc.start(st); osc.stop(st + dur);
+  osc.type = 'triangle'; osc.frequency.setValueAtTime(freq, st);
+  gain.gain.setValueAtTime(0.1, st); gain.gain.linearRampToValueAtTime(0, st+dur);
+  osc.start(st); osc.stop(st+dur);
 }
 
-// --- ランキング ---
 function loadAndShowRanking() {
   let data = localStorage.getItem(RANKING_KEY);
   let ranking = data ? JSON.parse(data) : [];
   const list = document.getElementById('ranking-list');
   list.innerHTML = "";
-  if (ranking.length === 0) {
-    list.innerHTML = '<li class="rank-item" style="justify-content:center; color:#aaa;">記録なし</li>';
-    return;
-  }
+  if (ranking.length === 0) { list.innerHTML = '<li class="rank-item" style="justify-content:center; color:#aaa;">記録なし</li>'; return; }
   ranking.forEach((r, index) => {
     let li = document.createElement('li');
     li.className = 'rank-item';
-    li.innerHTML = `<span class="rank-rank">${index + 1}.</span><span class="rank-score">${r.score} pt</span>`;
+    li.innerHTML = `<span class="rank-rank">${index+1}.</span><span class="rank-score">${r.score} pt</span>`;
     list.appendChild(li);
   });
 }
@@ -305,44 +282,29 @@ function saveScore(newScore) {
   return ranking.some(r => r.score === newScore);
 }
 
-// --- 初期化 ---
 async function initSystem(hand) {
   isRightHand = (hand === 'right');
   initAudio(); 
-
   if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
     alert("https接続が必要です。");
     return;
   }
-
   document.querySelector('#screen-menu .btn').innerText = "起動中...";
-
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      audio: false,
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
+      audio: false, video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } }
     });
     videoElem.srcObject = stream;
-    videoElem.onloadedmetadata = () => {
-      videoElem.play();
-      initAI();
-    };
-  } catch (err) {
-    alert("カメラエラー: " + err.name);
-  }
+    videoElem.onloadedmetadata = () => { videoElem.play(); initAI(); };
+  } catch (err) { alert("カメラエラー: " + err.name); }
 }
 
 function initAI() {
   hands = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
-  hands.setOptions({
-    maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
-  });
+  hands.setOptions({ maxNumHands: 1, modelComplexity: 0, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5 });
   hands.onResults(onResults);
   processVideo();
-  
-  appState = 1;
-  switchScreen('screen-calib');
-  setupCalib('close');
+  appState = 1; switchScreen('screen-calib'); setupCalib('close');
 }
 
 async function processVideo() {
@@ -352,11 +314,8 @@ async function processVideo() {
 
 function onResults(results) {
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
-    landmarks = results.multiHandLandmarks[0];
-    calcHand();
-  } else {
-    landmarks = null;
-  }
+    landmarks = results.multiHandLandmarks[0]; calcHand();
+  } else { landmarks = null; }
 }
 
 function calcHand() {
@@ -365,7 +324,6 @@ function calcHand() {
   let p0 = {x:(1-landmarks[0].x)*w, y:landmarks[0].y*h};
   let p5 = {x:(1-landmarks[5].x)*w, y:landmarks[5].y*h};
   let p4 = {x:(1-landmarks[4].x)*w, y:landmarks[4].y*h};
-
   let v1 = {x: p5.x - p0.x, y: p5.y - p0.y};
   let v2 = {x: p4.x - p0.x, y: p4.y - p0.y};
   let dot = v1.x * v2.x + v1.y * v2.y;
@@ -374,13 +332,11 @@ function calcHand() {
   if (mag1 * mag2 === 0) return; 
   let cosTheta = Math.max(-1, Math.min(1, dot / (mag1 * mag2)));
   let deg = Math.floor(Math.acos(cosTheta) * (180 / Math.PI));
-
   thumbAngle = deg;
   if(appState===1) document.getElementById('calib-val').innerText = thumbAngle + "°";
   document.getElementById('hud-rom').innerText = thumbAngle + "°";
 }
 
-// --- p5.js ---
 function setup() {
   let cvs = createCanvas(windowWidth, windowHeight);
   cvs.style('pointer-events', 'none');
@@ -389,8 +345,53 @@ function setup() {
 
 function draw() {
   clear();
+  
+  // ガイド表示 (キャリブレーション中のみ)
+  if (appState === 1) {
+    drawHandGuide();
+  }
+
   if(appState === 2) runGame();
   if(landmarks) drawSkeleton();
+}
+
+// ★★★ ガイド描画関数 (新規追加) ★★★
+function drawHandGuide() {
+  push();
+  noFill();
+  stroke(0, 255, 255, 150 + sin(frameCount * 0.1) * 100); // 点滅
+  strokeWeight(4);
+  
+  // 破線にする
+  drawingContext.setLineDash([10, 10]);
+  
+  let guideW = 200;
+  let guideH = 250;
+  let x, y;
+
+  // 右手なら右側、左手なら左側にガイド
+  if (isRightHand) {
+    x = width * 0.7 - guideW/2; // 右寄り
+  } else {
+    x = width * 0.3 - guideW/2; // 左寄り
+  }
+  y = height - guideH - 50;
+
+  // 枠描画
+  rect(x, y, guideW, guideH, 20);
+  
+  // 中にアイコン
+  noStroke();
+  fill(255, 255, 0, 200);
+  textSize(80);
+  textAlign(CENTER, CENTER);
+  text("✊️", x + guideW/2, y + guideH/2);
+  
+  textSize(20);
+  fill(255);
+  text("ここに手をセット", x + guideW/2, y + guideH + 30);
+  
+  pop();
 }
 
 function drawSkeleton() {
@@ -403,14 +404,13 @@ function drawSkeleton() {
   fill(255, 0, 0); noStroke(); circle(p4.x, p4.y, 15);
 }
 
-// --- キャリブレーション ---
 function setupCalib(mode) {
   const t = document.getElementById('calib-title');
   const m = document.getElementById('calib-msg');
   const b = document.querySelector('#screen-calib .btn');
   if(mode === 'close') {
     t.innerText = "測定：閉じる";
-    m.innerHTML = "親指を閉じて（グー）<br>ボタンを押してください";
+    m.innerHTML = "ガイドに合わせて<br>親指を閉じて（グー）<br>ボタンを押してください";
     b.innerText = "記録";
     angleClose = 0; angleOpen = 0;
   } else {
@@ -436,7 +436,6 @@ function nextCalib() {
   }
 }
 
-// --- ゲームロジック ---
 function startGame() {
   appState = 2;
   switchScreen(null);
