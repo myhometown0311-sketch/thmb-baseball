@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Number Shot Guide</title>
+<title>Number Shot Guide Fixed</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -346,50 +346,55 @@ function setup() {
 function draw() {
   clear();
   
-  // ガイド表示 (キャリブレーション中のみ)
-  if (appState === 1) {
-    drawHandGuide();
+  // ガイド表示 (測定中 OR ゲーム中)
+  if (appState === 1 || appState === 2) {
+    drawHandGuide(appState);
   }
 
   if(appState === 2) runGame();
   if(landmarks) drawSkeleton();
 }
 
-// ★★★ ガイド描画関数 (新規追加) ★★★
-function drawHandGuide() {
+// ガイド描画 (stateで色や文字を変える)
+function drawHandGuide(state) {
   push();
   noFill();
-  stroke(0, 255, 255, 150 + sin(frameCount * 0.1) * 100); // 点滅
-  strokeWeight(4);
   
-  // 破線にする
+  // 色設定: ゲーム中(2)は薄く、測定中(1)ははっきり
+  let alpha = (state === 2) ? 60 : 150;
+  stroke(0, 255, 255, alpha); 
+  
+  // 点滅効果 (測定中のみ強く)
+  if(state === 1) {
+    let blink = 150 + sin(frameCount * 0.1) * 100;
+    stroke(0, 255, 255, blink);
+  }
+
+  strokeWeight(3);
   drawingContext.setLineDash([10, 10]);
   
   let guideW = 200;
   let guideH = 250;
   let x, y;
 
-  // 右手なら右側、左手なら左側にガイド
   if (isRightHand) {
-    x = width * 0.7 - guideW/2; // 右寄り
+    x = width * 0.75 - guideW/2; 
   } else {
-    x = width * 0.3 - guideW/2; // 左寄り
+    x = width * 0.25 - guideW/2; 
   }
   y = height - guideH - 50;
 
-  // 枠描画
   rect(x, y, guideW, guideH, 20);
   
-  // 中にアイコン
   noStroke();
-  fill(255, 255, 0, 200);
+  fill(255, 255, 0, (state === 2) ? 80 : 200);
   textSize(80);
   textAlign(CENTER, CENTER);
   text("✊️", x + guideW/2, y + guideH/2);
   
-  textSize(20);
-  fill(255);
-  text("ここに手をセット", x + guideW/2, y + guideH + 30);
+  textSize(16);
+  fill(255, (state === 2) ? 150 : 255);
+  text("ここに手を固定", x + guideW/2, y + guideH + 30);
   
   pop();
 }
