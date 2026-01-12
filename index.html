@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Number Shot RealGuide</title>
+<title>Number Shot Demo Fix</title>
 <style>
   /* --- 基本設定 --- */
   body {
@@ -27,11 +27,16 @@
   #ui-layer {
     position: fixed; top: 0; left: 0; width: 100%; height: 100%;
     z-index: 100; pointer-events: none;
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; 
+    /* justify-content: center;  <-- 削除: 個別に位置指定するため */
   }
 
   /* 画面パネル共通 */
   .screen {
+    position: absolute; /* 絶対配置に変更 */
+    left: 50%; top: 50%;
+    transform: translate(-50%, -50%); /* デフォルトは中央 */
+    
     background: rgba(0, 0, 0, 0.95);
     border: 2px solid #ffcc00; border-radius: 16px;
     padding: 20px; text-align: center; width: 90%; max-width: 420px;
@@ -40,6 +45,13 @@
     max-height: 90vh; overflow-y: auto;
   }
   .screen.active { display: block; }
+
+  /* ★★★ デモ画面専用スタイル (上部に配置) ★★★ */
+  #screen-demo {
+    top: 15%; /* 画面の上の方へ */
+    transform: translateX(-50%); /* 横だけ中央揃え */
+    border-color: #00e5ff; /* 区別のため色変更 */
+  }
 
   h1 { color: #ffeb3b; margin: 0 0 10px 0; font-size: 28px; font-weight: 800; letter-spacing: 1px; }
   h2 { color: #00e5ff; margin: 0 0 10px 0; font-size: 18px; }
@@ -151,7 +163,8 @@
       <span class="step-num">2</span> <strong>デモ画面</strong>でタイミングを確認！<br>
       <span class="step-num">3</span> 掌をカメラに向け、枠内でグー✊️<br>
       <span class="step-num">4</span> 可動域を測定<br>
-      <span class="step-num">5</span> 赤い枠内で手を固定し、プレイ開始！
+      <span class="step-num">5</span> <strong>ガイドが赤くなったら</strong>親指を外転！<br>
+      <span class="step-num">6</span> 打球が飛んでいくのを確認
     </div>
 
     <button class="btn" onclick="startDemoFlow('right')">右手でスタート</button>
@@ -160,18 +173,14 @@
 
   <div id="screen-demo" class="screen">
     <h2>👋 プレイイメージ</h2>
-    <p>画面の動きを見てください。<br>ボールが来たら親指を開きます！</p>
-    <p style="color:#ffeb3b; font-weight:bold; margin-top:20px;">
-      ↓ 手はこの枠から出さないでね ↓
-    </p>
-    <div style="height:150px;"></div> 
-    
+    <p>下に表示される<strong>青い枠</strong>に<br>手を合わせてください。</p>
+    <p>ボールが来たら親指を開きます！<br>（下のガイドのアニメーションを見てね）</p>
     <button class="btn" onclick="goToCalibration()">測定へ進む</button>
   </div>
 
   <div id="screen-calib" class="screen">
     <h2 id="calib-title">測定：閉じる</h2>
-    <p id="calib-msg">青い枠の中に手をセット！<br>親指を閉じて（グー）<br>ボタンを押してください</p>
+    <p id="calib-msg">ガイドに合わせて<br>親指を閉じて（グー）<br>ボタンを押してください</p>
     <div id="calib-val" style="font-size:40px; color:cyan; margin:20px; font-family:monospace;">0°</div>
     <button class="btn" onclick="nextCalib()">記録</button>
   </div>
@@ -224,7 +233,6 @@ let nextPraiseScore = 1000;
 
 // デモ用変数
 let demoBallX = 0;
-let demoBallSpeed = 5;
 
 window.onload = function() {
   loadAndShowRanking();
@@ -385,41 +393,38 @@ function draw() {
   if(landmarks) drawSkeleton();
 }
 
-// リアルなデモアニメーション
+// リアルなデモアニメーション (修正版)
 function runDemoAnimation() {
-  // 1. 設定
   let guideW = 200; let guideH = 250;
   let handX, handY;
   
   if (isRightHand) { 
-    handX = width * 0.75; // 手の基準位置
+    handX = width * 0.75; 
   } else { 
     handX = width * 0.25; 
   }
-  handY = height - 150; // 手の基準高さ
-  
-  let targetY = height * 0.6; // ボールの高さ
+  handY = height - 150; 
+  let targetY = height * 0.6; 
 
-  // 2. ボールの動き
+  // ボール
   let speed = 8;
   if (isRightHand) {
     demoBallX += speed;
-    if (demoBallX > width) demoBallX = 0; // ループ
+    if (demoBallX > width) demoBallX = 0;
   } else {
     demoBallX -= speed;
-    if (demoBallX < 0) demoBallX = width; // ループ
+    if (demoBallX < 0) demoBallX = width;
   }
 
-  // 3. ヒット判定（デモ用）
+  // ヒット判定
   let distToHand = Math.abs(demoBallX - handX);
   let isHitTiming = distToHand < 60;
 
-  // 4. 描画
   // ストライクゾーン
   push();
   noFill();
   if (isHitTiming) {
-    stroke(255, 0, 0); strokeWeight(8); // 赤く光る
+    stroke(255, 0, 0); strokeWeight(8); 
     fill(255,0,0); noStroke(); textSize(30); textAlign(CENTER);
     text("HIT!", handX, targetY - 70);
   } else {
@@ -428,28 +433,36 @@ function runDemoAnimation() {
   circle(handX, targetY, 100);
   pop();
 
-  // ボール
+  // ボール描画
   fill(255); noStroke();
   circle(demoBallX, targetY, 20);
 
-  // 手（絵文字で表現）
+  // 手（絵文字）の描画
   push();
   textSize(100); textAlign(CENTER, CENTER);
-  // ガイド枠の中心に配置
   let guideX = isRightHand ? width * 0.75 : width * 0.25;
   let guideY = height - 250/2 - 50; 
   
-  // ヒットタイミングなら「パー（✋）」、それ以外は「グー（✊）」
-  let handEmoji = isHitTiming ? "✋" : "✊";
-  
-  // 手の絵文字を表示（ガイド枠の中に）
-  text(handEmoji, guideX, guideY);
+  translate(guideX, guideY); // ガイドの中心へ
+
+  if (isHitTiming) {
+    // 開く（👍️を横に向ける）
+    // 右手なら左へ回転(-90)、左手なら右へ回転(90)
+    let rot = isRightHand ? -HALF_PI : HALF_PI;
+    rotate(rot);
+    text("👍️", 0, 0);
+  } else {
+    // 閉じる（✊️）
+    text("✊️", 0, 0);
+  }
+  pop();
   
   // 吹き出し
-  textSize(20);
+  push();
+  textSize(20); textAlign(CENTER);
   if (isHitTiming) {
     fill(255, 255, 0);
-    text("開く！", guideX, guideY - 80);
+    text("開く！(外転)", guideX, guideY - 80);
   } else {
     fill(200);
     text("待つ...", guideX, guideY - 80);
@@ -483,14 +496,18 @@ function drawHandGuide(state) {
   textSize(16);
   fill(255, 255, 0);
   textAlign(CENTER);
-  text("⚠️ 枠から手を出さないで", x + guideW/2, y - 15);
+  if (state !== 5) text("⚠️ 枠から手を出さないで", x + guideW/2, y - 15);
 
   // 枠内のテキスト
-  if (state !== 5) { // デモ中はアニメーション優先で文字消す
+  if (state !== 5) { 
     fill(255, (state === 2) ? 100 : 200);
-    text("ここに手をセット", x + guideW/2, y + guideH - 30);
-    textSize(40);
-    text("✊️", x + guideW/2, y + guideH/2);
+    text("ここに手を固定", x + guideW/2, y + guideH - 30);
+    
+    // アイコン (測定中のみ表示、ゲーム中は邪魔なので消すか薄くする)
+    if (state === 1) {
+        textSize(40);
+        text("✊️", x + guideW/2, y + guideH/2);
+    }
   }
   pop();
 }
